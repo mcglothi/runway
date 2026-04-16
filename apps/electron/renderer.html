@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1c1c1e;
+      color: #e5e5ea;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+      font-size: 13px;
+      user-select: none;
+      overflow: hidden;
+      border-radius: 10px;
+    }
+
+    /* drag region at top */
+    #header {
+      -webkit-app-region: drag;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 8px;
+      border-bottom: 1px solid #2c2c2e;
+    }
+
+    #header-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      color: #fff;
+    }
+
+    #header-right {
+      -webkit-app-region: no-drag;
+      display: flex;
+      gap: 4px;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      color: #8e8e93;
+      cursor: pointer;
+      font-size: 15px;
+      padding: 2px 5px;
+      border-radius: 4px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .icon-btn:hover { color: #e5e5ea; background: #2c2c2e; }
+
+    #gauges {
+      padding: 10px 0 4px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 70px 1fr 46px 64px;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
+      transition: background 0.1s;
+    }
+    .row:hover { background: #2c2c2e; }
+
+    .agent-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: #aeaeb2;
+      text-transform: capitalize;
+    }
+
+    .bar-track {
+      height: 6px;
+      background: #3a3a3c;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.4s ease;
+    }
+    .bar-fill.low    { background: #30d158; } /* green  <50%  */
+    .bar-fill.mid    { background: #ffd60a; } /* yellow 50-80% */
+    .bar-fill.high   { background: #ff453a; } /* red    >80%  */
+    .bar-fill.none   { background: #3a3a3c; width: 100% !important; }
+
+    .pct {
+      font-size: 12px;
+      font-weight: 600;
+      text-align: right;
+      color: #e5e5ea;
+      min-width: 32px;
+    }
+    .pct.dim { color: #48484a; }
+
+    .runway {
+      font-size: 11px;
+      color: #636366;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .runway.ok   { color: #30d158; }
+    .runway.warn { color: #ffd60a; }
+    .runway.crit { color: #ff453a; }
+
+    #footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 14px 9px;
+      border-top: 1px solid #2c2c2e;
+      margin-top: 2px;
+    }
+
+    #last-updated {
+      font-size: 10px;
+      color: #48484a;
+    }
+
+    #not-configured {
+      padding: 16px 14px;
+      color: #636366;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    #not-configured a {
+      color: #0a84ff;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    #not-configured a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div id="header-left">
+    <span>Runway</span>
+  </div>
+  <div id="header-right">
+    <button class="icon-btn" id="btn-refresh" title="Refresh now">↻</button>
+    <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+  </div>
+</div>
+
+<div id="gauges">
+  <!-- rows injected by JS -->
+</div>
+
+<div id="footer">
+  <span id="last-updated">—</span>
+</div>
+
+<script>
+  const PROVIDERS = ['claude', 'codex', 'copilot', 'gemini'];
+
+  // ── Format helpers ──────────────────────────────────────────────────────────
+  function fmtRunway(ms) {
+    if (ms == null) return null;
+    const totalMin = Math.floor(ms / 60000);
+    const h = Math.floor(totalMin / 60);
+    const m = totalMin % 60;
+    return h > 0 ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`;
+  }
+
+  function runwayClass(ms) {
+    if (ms == null) return '';
+    if (ms < 30 * 60000) return 'crit';
+    if (ms < 90 * 60000) return 'warn';
+    return 'ok';
+  }
+
+  function barClass(pct) {
+    if (pct == null) return 'none';
+    if (pct >= 80) return 'high';
+    if (pct >= 50) return 'mid';
+    return 'low';
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────────
+  function render(snapshots) {
+    const gauges = document.getElementById('gauges');
+    const configured = Object.keys(snapshots).length > 0;
+
+    if (!configured) {
+      gauges.innerHTML = `<div id="not-configured">
+        No providers configured yet.<br>
+        <a id="open-settings-link">Open Settings</a> to add your API keys.
+      </div>`;
+      document.getElementById('open-settings-link')
+        ?.addEventListener('click', () => window.runway.openSettings());
+      return;
+    }
+
+    const rows = PROVIDERS.map(agent => {
+      const snap = snapshots[agent];
+      if (!snap) return renderRow(agent, null);
+      return renderRow(agent, snap.short ?? snap.long ?? null);
+    }).join('');
+
+    gauges.innerHTML = rows;
+  }
+
+  function renderRow(agent, window) {
+    const label = agent.charAt(0).toUpperCase() + agent.slice(1);
+
+    if (!window) {
+      return `<div class="row">
+        <span class="agent-name">${label}</span>
+        <div class="bar-track"><div class="bar-fill none" style="width:100%"></div></div>
+        <span class="pct dim">—</span>
+        <span class="runway">n/a</span>
+      </div>`;
+    }
+
+    const pct = window.utilization;
+    const pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
+    const pctClass = pct != null ? '' : 'dim';
+    const barW = pct != null ? Math.min(100, Math.round(pct)) : 0;
+    const fillClass = barClass(pct);
+    const rwMs = window.runway_ms;
+    const rwText = fmtRunway(rwMs) ?? '—';
+    const rwClass = runwayClass(rwMs);
+
+    return `<div class="row">
+      <span class="agent-name">${label}</span>
+      <div class="bar-track">
+        <div class="bar-fill ${fillClass}" style="width:${barW}%"></div>
+      </div>
+      <span class="pct ${pctClass}">${pctDisplay}</span>
+      <span class="runway ${rwClass}">${rwText}</span>
+    </div>`;
+  }
+
+  function updateTimestamp() {
+    document.getElementById('last-updated').textContent =
+      'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  // ── Init ────────────────────────────────────────────────────────────────────
+  document.getElementById('btn-refresh').addEventListener('click', async () => {
+    document.getElementById('btn-refresh').style.opacity = '0.4';
+    await window.runway.refresh();
+    document.getElementById('btn-refresh').style.opacity = '';
+  });
+
+  document.getElementById('btn-settings').addEventListener('click', () => {
+    window.runway.openSettings();
+  });
+
+  // Listen for pushed snapshots from main process
+  window.runway.onSnapshots((data) => {
+    render(data);
+    updateTimestamp();
+  });
+
+  // Load initial state
+  window.runway.getSnapshots().then((data) => {
+    render(data);
+    if (Object.keys(data).length > 0) updateTimestamp();
+  });
+</script>
+</body>
+</html>

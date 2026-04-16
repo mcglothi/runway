@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'unsafe-inline'; script-src 'self' 'unsafe-inline'" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1c1c1e;
+      color: #e5e5ea;
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+      font-size: 13px;
+      padding: 20px 24px;
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 18px;
+    }
+
+    section {
+      margin-bottom: 22px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #636366;
+      margin-bottom: 8px;
+    }
+
+    .field {
+      margin-bottom: 10px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      color: #aeaeb2;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      background: #2c2c2e;
+      border: 1px solid #3a3a3c;
+      border-radius: 6px;
+      color: #e5e5ea;
+      font-size: 13px;
+      padding: 7px 10px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    input:focus { border-color: #0a84ff; }
+
+    .hint {
+      font-size: 11px;
+      color: #636366;
+      margin-top: 3px;
+      line-height: 1.4;
+    }
+
+    .hint a {
+      color: #0a84ff;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .hint a:hover { text-decoration: underline; }
+
+    .row-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    button {
+      padding: 8px 18px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s;
+    }
+    button:hover { opacity: 0.85; }
+    button:active { opacity: 0.7; }
+
+    #btn-save {
+      background: #0a84ff;
+      color: #fff;
+    }
+    #btn-cancel {
+      background: #2c2c2e;
+      color: #aeaeb2;
+    }
+
+    #status {
+      font-size: 12px;
+      color: #30d158;
+      min-height: 18px;
+    }
+    #status.error { color: #ff453a; }
+
+    hr {
+      border: none;
+      border-top: 1px solid #2c2c2e;
+      margin: 4px 0 16px;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Settings</h1>
+
+<!-- Claude -->
+<section>
+  <div class="section-title">Claude</div>
+  <hr>
+  <div class="field">
+    <label>Session (via browser window)</label>
+    <div class="hint">
+      Claude auth is handled automatically — just
+      <a id="open-claude">sign in at claude.ai</a> once in the hidden browser window
+      that Runway manages, and quota will be fetched from there.
+    </div>
+  </div>
+</section>
+
+<!-- Codex / OpenAI -->
+<section>
+  <div class="section-title">Codex / OpenAI</div>
+  <hr>
+  <div class="field">
+    <label for="codexApiKey">Admin API Key</label>
+    <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
+    <div class="hint">Requires org:read scope to read usage data.</div>
+  </div>
+</section>
+
+<!-- GitHub Copilot Enterprise -->
+<section>
+  <div class="section-title">GitHub Copilot Enterprise</div>
+  <hr>
+  <div class="field">
+    <label for="copilotToken">GitHub Token</label>
+    <input type="password" id="copilotToken" placeholder="ghp_… or installation token" autocomplete="off" />
+    <div class="hint">Fine-grained PAT or GitHub App installation token with Copilot metrics read access.</div>
+  </div>
+  <div class="field">
+    <label for="copilotEnterprise">Enterprise Slug</label>
+    <input type="text" id="copilotEnterprise" placeholder="my-org-enterprise" autocomplete="off" />
+    <div class="hint">The enterprise slug from your GitHub Enterprise URL.</div>
+  </div>
+</section>
+
+<!-- AIKB integration -->
+<section>
+  <div class="section-title">AIKB Integration</div>
+  <hr>
+  <div class="field">
+    <label for="aikbEventsDir">Events Directory (optional)</label>
+    <input type="text" id="aikbEventsDir" placeholder="/path/to/AIKB/_runtime/events" autocomplete="off" />
+    <div class="hint">If set, quota snapshots are appended to your AIKB runtime event log after each poll.</div>
+  </div>
+</section>
+
+<div class="row-actions">
+  <button id="btn-save">Save</button>
+  <button id="btn-cancel">Cancel</button>
+  <span id="status"></span>
+</div>
+
+<script>
+  const fields = ['codexApiKey', 'copilotToken', 'copilotEnterprise', 'aikbEventsDir'];
+
+  function setStatus(msg, isError = false) {
+    const el = document.getElementById('status');
+    el.textContent = msg;
+    el.className = isError ? 'error' : '';
+    if (msg && !isError) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2500);
+  }
+
+  // Load current config
+  window.runway.getConfig().then(config => {
+    for (const key of fields) {
+      const el = document.getElementById(key);
+      if (el && config[key]) el.value = config[key];
+    }
+  });
+
+  document.getElementById('open-claude').addEventListener('click', () => {
+    window.runway.openClaude();
+  });
+
+  document.getElementById('btn-save').addEventListener('click', async () => {
+    const data = {};
+    for (const key of fields) {
+      const val = document.getElementById(key)?.value?.trim();
+      if (val) data[key] = val;
+    }
+    try {
+      await window.runway.saveConfig(data);
+      setStatus('Saved — refreshing…');
+    } catch (err) {
+      setStatus('Save failed: ' + err.message, true);
+    }
+  });
+
+  document.getElementById('btn-cancel').addEventListener('click', () => window.close());
+</script>
+</body>
+</html>
