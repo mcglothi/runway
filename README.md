@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/hero-graphic.png" alt="Runway" width="1000" />
+  <img src="hero_graphic.png" alt="Runway" width="1000" />
 </p>
 
 # Runway
@@ -36,12 +36,12 @@ You find out when a session goes cold mid-task. When you burn through your weekl
 Runway fixes that. It's a system tray widget and browser extension that tracks quota across all your agents in real time, stores the history so you can see when limits shift, and gives agents the signal they need to know when to summarize, hand off, or stand down.
 
 ```
-┌─────────────────────────────────────┐
-│  Claude     ████████░░░░  68%  1h22m │
-│  Codex      ███░░░░░░░░░  24%  3h41m │
-│  Gemini     ─────────────  –        │
-└─────────────────────────────────────┘
-          time remaining in window
+┌──────────────────────────────────────┐
+│ Claude  ████████░░░░  68%   1h22m    │
+│ Codex   ███░░░░░░░░░  24%   3h41m    │
+│ Gemini  ─────────────   --   n/a     │
+└──────────────────────────────────────┘
+         time remaining in window
 ```
 
 ---
