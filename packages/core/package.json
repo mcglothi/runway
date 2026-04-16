@@ -1,0 +1,7 @@
+{
+  "name": "@runway/core",
+  "version": "0.1.0",
+  "description": "Shared quota provider logic for Runway",
+  "main": "src/index.js",
+  "license": "MIT"
+}

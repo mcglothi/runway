@@ -1,0 +1,18 @@
+{
+  "name": "runway",
+  "version": "0.1.0",
+  "description": "Quota and context tracking for AI agents — system tray widget and browser extension",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev:electron": "npm -w apps/electron run dev",
+    "dev:extension": "npm -w apps/extension run dev",
+    "build:electron": "npm -w apps/electron run build",
+    "build:extension": "npm -w apps/extension run build",
+    "build:core": "npm -w packages/core run build"
+  },
+  "license": "MIT"
+}

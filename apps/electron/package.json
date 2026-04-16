@@ -1,0 +1,26 @@
+{
+  "name": "@runway/electron",
+  "version": "0.1.0",
+  "description": "Runway system tray widget",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron .",
+    "build": "electron-builder"
+  },
+  "dependencies": {
+    "@runway/core": "*",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "electron": "^34.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.mcglothi.runway",
+    "productName": "Runway",
+    "mac": { "category": "public.app-category.developer-tools" },
+    "linux": { "target": "AppImage" },
+    "win": { "target": "nsis" }
+  },
+  "license": "MIT"
+}

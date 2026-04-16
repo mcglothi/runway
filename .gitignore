@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.local
+.DS_Store
+apps/electron/out/
+apps/extension/dist/
