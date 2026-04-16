@@ -15,7 +15,7 @@
 
 /**
  * @typedef {Object} QuotaSnapshot
- * @property {string} agent             - provider name: 'claude' | 'codex' | 'gemini'
+ * @property {string} agent             - provider name: 'claude' | 'codex' | 'copilot' | 'gemini'
  * @property {string} ts_utc            - ISO 8601 UTC timestamp of this snapshot
  * @property {WindowQuota} [short]      - short window (e.g. Claude 5-hour, Codex daily)
  * @property {WindowQuota} [long]       - long window (e.g. Claude 7-day)
