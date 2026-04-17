@@ -66,7 +66,13 @@ async function claudeFetch(url) {
   }
   return win.webContents.executeJavaScript(`
     fetch(${JSON.stringify(url)}, { credentials: 'include' })
-      .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.text().catch(() => '');
+          throw new Error('HTTP ' + r.status + ' ' + ${JSON.stringify(url)} + ': ' + body.substring(0, 300));
+        }
+        return r.json();
+      })
   `);
 }
 
@@ -101,6 +107,7 @@ async function pollClaude(config) {
   const cookies = await session.cookies.get({ url: 'https://claude.ai' });
   const sessionKey = cookies.find(c => c.name === 'sessionKey')?.value;
   if (!sessionKey) return null; // not logged in — skip silently
+  console.log(`[runway:claude] sessionKey found (${sessionKey.length} chars, ends …${sessionKey.slice(-4)})`);
 
   const snapshot = await claude.fetchQuota({
     sessionKey,
