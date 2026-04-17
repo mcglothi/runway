@@ -155,9 +155,18 @@
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
     }
-    .runway-col.ok   { color: #30d158; }
-    .runway-col.warn { color: #ffd60a; }
-    .runway-col.crit { color: #ff453a; }
+    .runway-col.ok     { color: #30d158; }
+    .runway-col.warn   { color: #ffd60a; }
+    .runway-col.crit   { color: #ff453a; }
+    .runway-col.signin { color: #3a3a3c; }
+
+    .runway-link {
+      color: inherit;
+      text-decoration: underline;
+      text-decoration-color: #3a3a3c;
+      cursor: pointer;
+    }
+    .runway-link:hover { color: #0a84ff; text-decoration-color: #0a84ff; }
 
     #footer {
       display: flex;
@@ -299,10 +308,11 @@
 
       // Special case: Gemini should always be a single Daily row
       if (agent === 'gemini') {
-        const geminiWin = snap.short || snap.long;
-        // Prioritize the count display from 'long' if provided by telemetry
+        const geminiWin = snap.short || snap.long || {};
+        // Prioritize the count display from 'long' if provided (telemetry or pro session)
         if (snap.long?.text) geminiWin.text = snap.long.text;
-        return sep + renderWindowRow(agent, 'Daily', geminiWin, false);
+        const notLoggedIn = snap.long?.text === 'Not logged in';
+        return sep + renderWindowRow(agent, 'Daily', geminiWin, false, notLoggedIn);
       }
 
       if (snap.short && snap.long) {
@@ -317,7 +327,7 @@
     gauges.innerHTML = html;
   }
 
-  function renderWindowRow(agent, windowTag, window, isSub) {
+  function renderWindowRow(agent, windowTag, window, isSub, signInHint = false) {
     const prov = PROVIDERS[agent] ?? { name: agent.charAt(0).toUpperCase() + agent.slice(1), icon: '' };
     const fillClass = barClass(window?.utilization);
     const barW = window?.utilization != null ? Math.min(100, Math.round(window.utilization)) : 0;
@@ -329,6 +339,7 @@
     const resetsAt = window?.resets_at;
     let rwText = fmtRunway(rwMs) ?? '—';
     let rwClass = runwayClass(rwMs);
+    let rwIsLink = false;
 
     // If exhausted (runway_ms is 0), show time until reset instead
     if (rwMs === 0 && resetsAt) {
@@ -337,6 +348,13 @@
         rwText = 'in ' + (fmtRunway(resetMs) ?? 'soon');
         rwClass = 'crit';
       }
+    }
+
+    // Sign-in hint overrides runway display
+    if (signInHint) {
+      rwText = 'sign in';
+      rwClass = 'signin';
+      rwIsLink = true;
     }
 
     let iconHtml, labelHtml;
@@ -355,12 +373,16 @@
       labelHtml = `<div class="agent-label"><span class="agent-name">${prov.name}</span></div>`;
     }
 
+    const rwInner = rwIsLink
+      ? `<a class="runway-link" data-action="gemini-login">${rwText}</a>`
+      : rwText;
+
     return `<div class="row${isSub ? ' row-sub' : ''}">
       ${iconHtml}
       ${labelHtml}
       <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${barW}%"></div></div>
       <span class="pct ${pctClass}">${pctDisplay}</span>
-      <span class="runway-col ${rwClass}">${rwText}</span>
+      <span class="runway-col ${rwClass}">${rwInner}</span>
     </div>`;
   }
 
@@ -375,6 +397,15 @@
     btn.style.opacity = '0.35';
     await window.runway.refresh();
     btn.style.opacity = '';
+  });
+
+  // Delegated handler for sign-in links rendered inside gauge rows
+  document.getElementById('gauges').addEventListener('click', (e) => {
+    const link = e.target.closest('[data-action]');
+    if (!link) return;
+    if (link.dataset.action === 'gemini-login') {
+      window.runway.openGeminiLogin();
+    }
   });
 
   document.getElementById('btn-settings').addEventListener('click', () => {

@@ -69,6 +69,10 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
               resets_at: resetsAt.toISOString(),
               runway_ms: estimateRunway(utilization, resetsAt.getTime()),
             },
+            long: {
+              utilization: null,
+              text: `${used}/${limit}`,
+            },
             raw: data,
           });
         }
@@ -104,13 +108,12 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
  */
 function estimateRunway(utilization, resetMs) {
   if (utilization == null || utilization >= 100) return 0;
-  const remaining = 100 - utilization;
   const msLeftInWindow = resetMs - Date.now();
   if (msLeftInWindow <= 0) return 0;
+  if (utilization <= 0) return msLeftInWindow;
 
-  // Simple linear projection
-  // If we used X% in Y time, we have (100-X)% left.
-  // This is a rough estimate for daily quotas.
+  const remaining = 100 - utilization;
+  // Linear projection: if we burned X% in (24h - msLeft), rate = X% / elapsed
   return Math.round((remaining / utilization) * (24 * 60 * 60 * 1000 - msLeftInWindow));
 }
 

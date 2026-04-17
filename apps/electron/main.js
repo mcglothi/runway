@@ -34,7 +34,7 @@ let snapshots = {};     // latest QuotaSnapshot per agent
 let pollTimer = null;
 let claudeOrgId = null; // cached to avoid re-resolving every poll
 
-const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const POPUP_WIDTH = 340;
 const POPUP_ROW_HEIGHT = 30; // px per window row
 const POPUP_CHROME = 88;     // header + footer fixed height
@@ -463,6 +463,18 @@ async function pollGemini(config) {
   });
 }
 
+// ── Poll scheduling ───────────────────────────────────────────────────────────
+function schedulePoll() {
+  if (pollTimer) clearInterval(pollTimer);
+  const config = loadConfig();
+  const interval = typeof config.refreshInterval === 'number'
+    ? config.refreshInterval
+    : DEFAULT_POLL_INTERVAL_MS;
+  if (interval > 0) {
+    pollTimer = setInterval(pollAll, interval);
+  }
+}
+
 function maybeWriteToAikb() {
   const config = loadConfig();
   if (!config.aikbEventsDir) return;
@@ -619,6 +631,7 @@ ipcMain.handle('save-config', (_e, data) => {
   saveConfig(data);
   // Clear snapshots so disabled providers disappear immediately from the gauge
   snapshots = {};
+  schedulePoll(); // re-read interval in case it changed
   pollAll();
   return { ok: true };
 });
@@ -792,7 +805,7 @@ app.whenReady().then(() => {
 
   // Initial poll then schedule
   pollAll();
-  pollTimer = setInterval(pollAll, POLL_INTERVAL_MS);
+  schedulePoll();
 });
 
 app.on('window-all-closed', (e) => {
