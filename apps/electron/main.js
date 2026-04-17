@@ -177,7 +177,7 @@ function maybeWriteToAikb() {
 function createPopupWindow() {
   popupWin = new BrowserWindow({
     width: POPUP_WIDTH,
-    height: POPUP_HEIGHT,
+    height: POPUP_CHROME + POPUP_ROW_HEIGHT, // initial: 1 row, resized after first poll
     show: false,
     frame: false,
     resizable: false,
