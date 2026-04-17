@@ -107,7 +107,6 @@ async function pollClaude(config) {
   const cookies = await session.cookies.get({ url: 'https://claude.ai' });
   const sessionKey = cookies.find(c => c.name === 'sessionKey')?.value;
   if (!sessionKey) return null; // not logged in — skip silently
-  console.log(`[runway:claude] sessionKey found (${sessionKey.length} chars, ends …${sessionKey.slice(-4)})`);
 
   const snapshot = await claude.fetchQuota({
     sessionKey,
@@ -118,8 +117,6 @@ async function pollClaude(config) {
   // Cache orgId to avoid redundant /organizations calls
   if (snapshot._orgId) claudeOrgId = snapshot._orgId;
 
-  console.log('[runway:claude] snapshot short:', JSON.stringify(snapshot.short));
-  console.log('[runway:claude] usage raw keys:', Object.keys(snapshot.raw ?? {}));
   return snapshot;
 }
 
@@ -164,6 +161,10 @@ function createPopupWindow() {
   });
 
   popupWin.loadFile(path.join(__dirname, 'renderer.html'));
+
+  // Push current snapshots once the renderer is ready so there's no race
+  // between the window loading and the initial getSnapshots() call
+  popupWin.webContents.once('did-finish-load', () => pushToPopup());
 
   // Hide when focus is lost (click away)
   popupWin.on('blur', () => {
