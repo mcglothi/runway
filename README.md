@@ -163,49 +163,37 @@ GitHub Copilot enterprise support currently uses GitHub's metrics report API. Gi
 
 ---
 
-## AIKB Integration
+## AIKB Integration: Agent Self-Awareness
 
-If you run the [AI Knowledge Base](https://github.com/mcglothi/ai-knowledge-base), Runway can write quota snapshots directly to your `_runtime/events/` log. This makes your usage history searchable by both humans and agents.
+Runway is designed to feed the [AI Knowledge Base](https://github.com/mcglothi/AIKB) (AIKB). By writing quota snapshots to `_runtime/events/`, Runway gives agents the **self-awareness** they need to pace themselves.
+
+### Context Offloading & Model Routing
+When an agent (like Claude Code or Gemini CLI) is connected to an AIKB-synced Runway instance, it can query its own headroom before starting a complex task. This enables:
+
+1.  **Intelligent Summarization:** If Runway reports only 10% headroom left in the 5-hour window, the agent can proactively trigger a `/compress` or context offload to save tokens.
+2.  **Model Routing:** An orchestrator can see that Gemini has 90% "Daily" runway while Claude is at 5% and automatically route the next large implementation task to Gemini.
+3.  **Cost Guardrails:** Agents can determine if a task is too "expensive" for the remaining window and ask the human if they should proceed or switch to a local model (Ollama).
+
+### Configuration
+Enable the AIKB event stream in Settings or `.env`:
 
 ```bash
 # Enable in .env
 AIKB_EVENTS_PATH=/path/to/AIKB/_runtime/events/
-AIKB_SNAPSHOT_INTERVAL=300   # seconds, default 5 min
 ```
 
-Once enabled, you can query usage history with:
-
-```bash
-python3 /path/to/AIKB/_tools/memory-pipeline/runtime_cli.py wake-up
-# or via MCP:
-aikb_search "how much Claude quota did I use this week"
-```
-
-Snapshot schema written to `_runtime/events/YYYY-MM-DD.ndjson`:
-
-```json
-{
-  "ts_utc": "2026-04-16T18:00:00Z",
-  "agent": "Runway",
-  "type": "quota_snapshot",
-  "summary": "Claude 68% (1h22m), Codex 24% (3h41m)",
-  "detail": {
-    "claude":  { "five_hour": 68.4, "seven_day": 31.2, "resets_at": "..." },
-    "codex":   { "daily": 24.1, "resets_at": "..." },
-    "copilot": { "report_day": "2026-04-14", "daily_active_users": 42, "cli_request_count": 318 }
-  }
-}
-```
+Once enabled, agents can query their status via AIKB search:
+> "How much runway do I have left on Claude?"
 
 ---
 
 ## Roadmap
 
-- [ ] Gemini quota shim (local CLI interceptor)
-- [ ] Copilot personal premium-request tracking
-- [ ] Firefox extension
+- [x] Gemini Pro session tracking (AI Studio)
+- [x] Global "Pro Plan" vs "API Key" selection
 - [ ] Agent self-awareness API — let agents query their own headroom over MCP
 - [ ] Cross-agent handoff protocol — route new tasks to the agent with most runway
+- [ ] Historical usage graphs (local-only)
 - [ ] Local LLM support (Ollama)
 - [ ] Per-device breakdown — see which machine is consuming your quota
 
