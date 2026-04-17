@@ -118,6 +118,8 @@ async function pollClaude(config) {
   // Cache orgId to avoid redundant /organizations calls
   if (snapshot._orgId) claudeOrgId = snapshot._orgId;
 
+  console.log('[runway:claude] snapshot short:', JSON.stringify(snapshot.short));
+  console.log('[runway:claude] usage raw keys:', Object.keys(snapshot.raw ?? {}));
   return snapshot;
 }
 
