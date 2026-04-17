@@ -1,8 +1,9 @@
 'use strict';
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
@@ -31,6 +32,9 @@ let claudeOrgId = null; // cached to avoid re-resolving every poll
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const POPUP_WIDTH = 340;
 const POPUP_HEIGHT = 200; // grows with more providers
+const LOCAL_SERVER_PORT = 47821;
+
+let localServer = null;
 
 // ── Claude hidden window ──────────────────────────────────────────────────────
 function ensureClaudeWindow() {
@@ -267,20 +271,107 @@ ipcMain.handle('open-settings', openSettings);
 ipcMain.handle('open-claude', () => shell.openExternal('https://claude.ai'));
 ipcMain.handle('refresh', () => pollAll());
 
+// ── Local HTTP server (extension bridge) ──────────────────────────────────────
+//
+// Listens on 127.0.0.1:47821. Only reachable from localhost.
+// The browser extension uses this to:
+//   GET  /status  → confirm the desktop app is running
+//   POST /session → push a Claude sessionKey into the persisted cookie store
+//
+function startLocalServer() {
+  localServer = http.createServer(async (req, res) => {
+    // Reject anything not from loopback
+    const addr = req.socket.remoteAddress;
+    if (addr !== '127.0.0.1' && addr !== '::1' && addr !== '::ffff:127.0.0.1') {
+      res.writeHead(403).end();
+      return;
+    }
+
+    // CORS — Chrome extensions need these headers even for localhost
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+    if (req.method === 'OPTIONS') { res.writeHead(204).end(); return; }
+
+    if (req.method === 'GET' && req.url === '/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ running: true, version: app.getVersion() }));
+      return;
+    }
+
+    if (req.method === 'POST' && req.url === '/session') {
+      let body = '';
+      req.on('data', chunk => { body += chunk.toString(); });
+      req.on('end', async () => {
+        try {
+          const { sessionKey } = JSON.parse(body);
+          if (!sessionKey || typeof sessionKey !== 'string') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'sessionKey required' }));
+            return;
+          }
+
+          // Inject the cookie into the Claude partition so the hidden
+          // BrowserWindow picks it up on the next poll
+          const claudeSession = session.fromPartition('persist:claude');
+          await claudeSession.cookies.set({
+            url: 'https://claude.ai',
+            name: 'sessionKey',
+            value: sessionKey,
+            httpOnly: true,
+            secure: true,
+            expirationDate: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
+          });
+
+          claudeOrgId = null; // clear cached org ID — may have changed
+          pollAll();          // re-poll immediately with fresh session
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err.message }));
+        }
+      });
+      return;
+    }
+
+    res.writeHead(404).end();
+  });
+
+  localServer.listen(LOCAL_SERVER_PORT, '127.0.0.1', () => {
+    console.log(`[runway] bridge server listening on 127.0.0.1:${LOCAL_SERVER_PORT}`);
+  });
+
+  localServer.on('error', err => {
+    console.error('[runway] bridge server error:', err.message);
+  });
+}
+
 // ── App lifecycle ─────────────────────────────────────────────────────────────
 app.whenReady().then(() => {
   // macOS: don't show in dock
   if (process.platform === 'darwin') app.dock?.hide();
 
-  // Single instance
+  // Single instance — bring popup to front if a second instance is launched
+  // (also handles runway:// protocol opens when app is already running)
   if (!app.requestSingleInstanceLock()) {
     app.quit();
     return;
   }
   app.on('second-instance', () => tray && togglePopup());
 
+  // Register runway:// protocol so the browser extension can wake the app
+  app.setAsDefaultProtocolClient('runway');
+  app.on('open-url', (event, _url) => {
+    event.preventDefault();
+    if (tray) togglePopup();
+  });
+
   createTray();
   ensureClaudeWindow();
+  startLocalServer();
 
   // Initial poll then schedule
   pollAll();
@@ -294,4 +385,5 @@ app.on('window-all-closed', (e) => {
 
 app.on('before-quit', () => {
   if (pollTimer) clearInterval(pollTimer);
+  if (localServer) localServer.close();
 });

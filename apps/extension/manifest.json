@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Runway",
+  "version": "0.1.0",
+  "description": "Sync your Claude session with Runway Desktop — monitor AI quota in real time.",
+  "permissions": ["cookies"],
+  "host_permissions": [
+    "https://claude.ai/*",
+    "http://localhost:47821/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Runway"
+  }
+}

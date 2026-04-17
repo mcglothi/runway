@@ -2,16 +2,5 @@
   "name": "@runway/extension",
   "version": "0.1.0",
   "description": "Runway browser extension (Chrome)",
-  "scripts": {
-    "dev": "webpack --watch --mode development",
-    "build": "webpack --mode production"
-  },
-  "dependencies": {
-    "@runway/core": "*"
-  },
-  "devDependencies": {
-    "webpack": "^5.0.0",
-    "webpack-cli": "^5.0.0"
-  },
   "license": "MIT"
 }
