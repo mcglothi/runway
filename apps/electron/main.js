@@ -35,7 +35,7 @@ let pollTimer = null;
 let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
-const POPUP_WIDTH = 340;
+const POPUP_WIDTH = 360;
 const POPUP_ROW_HEIGHT = 30; // px per window row
 const POPUP_CHROME = 88;     // header + footer fixed height
 const LOCAL_SERVER_PORT = 47821;

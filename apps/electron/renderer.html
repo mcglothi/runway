@@ -70,6 +70,9 @@
     }
     .icon-btn:hover { color: #e5e5ea; background: rgba(255,255,255,0.08); }
 
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .icon-btn.spinning { animation: spin 0.7s linear infinite; color: #636366; }
+
     #gauges {
       padding: 4px 0 2px;
     }
@@ -145,8 +148,12 @@
       text-align: right;
       color: #e5e5ea;
       font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .pct.dim { color: #2c2c2e; }
+    .pct.dim   { color: #2c2c2e; }
+    .pct.error { color: #ff9f0a; font-weight: 400; }
 
     .runway-col {
       font-size: 11px;
@@ -154,6 +161,7 @@
       text-align: right;
       font-variant-numeric: tabular-nums;
       white-space: nowrap;
+      overflow: hidden;
     }
     .runway-col.ok     { color: #30d158; }
     .runway-col.warn   { color: #ffd60a; }
@@ -308,7 +316,8 @@
 
       // Special case: Gemini should always be a single Daily row
       if (agent === 'gemini') {
-        const geminiWin = snap.short || snap.long || {};
+        // Spread to avoid mutating the original snapshot object
+        const geminiWin = { ...(snap.short || snap.long || {}) };
         // Prioritize the count display from 'long' if provided (telemetry or pro session)
         if (snap.long?.text) geminiWin.text = snap.long.text;
         const notLoggedIn = snap.long?.text === 'Not logged in';
@@ -334,7 +343,8 @@
     const pct = window?.utilization;
     let pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
     if (window?.text) pctDisplay = window.text;
-    const pctClass = pct != null || window?.text ? '' : 'dim';
+    const isErrorText = window?.text === 'File missing' || window?.text === 'Read error';
+    const pctClass = isErrorText ? 'error' : (pct != null || window?.text ? '' : 'dim');
     const rwMs = window?.runway_ms;
     const resetsAt = window?.resets_at;
     let rwText = fmtRunway(rwMs) ?? '—';
@@ -377,26 +387,43 @@
       ? `<a class="runway-link" data-action="gemini-login">${rwText}</a>`
       : rwText;
 
+    const resetTitle = resetsAt && !rwIsLink
+      ? ` title="Resets at ${new Date(resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"`
+      : '';
+
     return `<div class="row${isSub ? ' row-sub' : ''}">
       ${iconHtml}
       ${labelHtml}
       <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${barW}%"></div></div>
       <span class="pct ${pctClass}">${pctDisplay}</span>
-      <span class="runway-col ${rwClass}">${rwInner}</span>
+      <span class="runway-col ${rwClass}"${resetTitle}>${rwInner}</span>
     </div>`;
   }
 
-  function updateTimestamp() {
-    document.getElementById('last-updated').textContent =
-      'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  // ── Footer: live "Updated X ago" ─────────────────────────────────────────────
+  let lastPollMs = null;
+
+  function fmtAgo(ms) {
+    const diff = Math.floor((Date.now() - ms) / 1000);
+    if (diff < 10)  return 'just now';
+    if (diff < 60)  return `${diff}s ago`;
+    if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+    return `${Math.floor(diff / 3600)}h ago`;
   }
+
+  function updateFooter() {
+    document.getElementById('last-updated').textContent =
+      lastPollMs ? `Updated ${fmtAgo(lastPollMs)}` : '—';
+  }
+
+  setInterval(updateFooter, 15000);
 
   // ── Init ──────────────────────────────────────────────────────────────────────
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
-    btn.style.opacity = '0.35';
+    btn.classList.add('spinning');
     await window.runway.refresh();
-    btn.style.opacity = '';
+    btn.classList.remove('spinning');
   });
 
   // Delegated handler for sign-in links rendered inside gauge rows
@@ -414,12 +441,18 @@
 
   window.runway.onSnapshots((data) => {
     render(data);
-    updateTimestamp();
+    lastPollMs = Date.now();
+    updateFooter();
   });
 
   window.runway.getSnapshots().then((data) => {
     render(data);
-    if (Object.keys(data).length > 0) updateTimestamp();
+    // Use the snapshot timestamp if we don't have a local poll time yet
+    const times = Object.values(data).map(s => new Date(s.ts_utc).getTime()).filter(Boolean);
+    if (times.length && !lastPollMs) {
+      lastPollMs = Math.max(...times);
+      updateFooter();
+    }
   });
 </script>
 </body>
