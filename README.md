@@ -191,11 +191,16 @@ Once enabled, agents can query their status via AIKB search:
 ## Roadmap
 
 - [x] Gemini Pro session tracking (AI Studio)
+- [x] Gemini CLI telemetry tracking (OTLP)
 - [x] Global "Pro Plan" vs "API Key" selection
 - [ ] Agent self-awareness API — let agents query their own headroom over MCP
 - [ ] Cross-agent handoff protocol — route new tasks to the agent with most runway
 - [ ] Historical usage graphs (local-only)
 - [ ] Local LLM support (Ollama)
+- [ ] Homebrew distribution formula
+- [ ] Configurable auto-refresh intervals (15s–1hr)
+- [ ] Cross-platform installers (Linux/Windows)
+
 - [ ] Per-device breakdown — see which machine is consuming your quota
 
 ---

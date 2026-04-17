@@ -31,14 +31,34 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
     } else {
       try {
         const data = await fetchFn(USAGE_ENDPOINT);
-        if (data && data.limits && data.usage) {
-          // Find the most relevant model (e.g. Gemini 1.5 Pro)
-          const proUsage = data.usage.find(u => u.model.includes('pro')) || data.usage[0];
-          const rpdLimit = data.limits.requestsPerDay || 1500; // Default for Pro plan
+        if (data) {
+          // 2026: Try multiple known data paths in the JSON
+          // Path 1: data.limits.requestsPerDay + data.usage[].requestCount
+          // Path 2: data.quotas[].limit + data.quotas[].usage
+          
+          let used = 0;
+          let limit = 1500; // default Pro plan
 
-          const used = proUsage ? proUsage.requestCount : 0;
-          const utilization = (used / rpdLimit) * 100;
+          if (data.limits && data.usage) {
+            const proUsage = data.usage.find(u => u.model?.includes('pro')) || data.usage[0];
+            used = proUsage ? (proUsage.requestCount ?? 0) : 0;
+            limit = data.limits.requestsPerDay || 1500;
+          } else if (data.quotas && Array.isArray(data.quotas)) {
+            // Find requests-per-day metric
+            const rpdQuota = data.quotas.find(q => q.metric?.includes('requests_per_day')) || 
+                             data.quotas.find(q => q.metric?.includes('generate_content'));
+            if (rpdQuota) {
+              used = rpdQuota.usage ?? 0;
+              limit = rpdQuota.limit ?? 1500;
+            }
+          } else {
+            console.warn('Gemini: Unrecognized usage data shape', JSON.stringify(data).substring(0, 100));
+            // If we got valid JSON but don't know the shape, we still return a snapshot
+            // so the UI knows we are connected.
+            return makeSnapshot('gemini', { short: { utilization: null, resets_at: null, runway_ms: null }, raw: data });
+          }
 
+          const utilization = (used / limit) * 100;
           const now = new Date();
           const resetsAt = new Date(now);
           resetsAt.setUTCHours(24, 0, 0, 0);
@@ -51,11 +71,13 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
             },
             raw: data,
           });
-        } else {
-          console.warn('Gemini: Session API returned incomplete data', JSON.stringify(data)?.substring(0, 100));
         }
       } catch (e) {
-        console.warn(`Gemini: Failed to fetch session-based usage: ${e.message}`);
+        if (e.message === 'NOT_LOGGED_IN') {
+          console.warn('Gemini: Session expired, please login via tray menu');
+        } else {
+          console.warn(`Gemini: Failed to fetch session-based usage: ${e.message}`);
+        }
       }
     }
   }

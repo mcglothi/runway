@@ -251,7 +251,8 @@
 
   // ── Format helpers ────────────────────────────────────────────────────────────
   function fmtRunway(ms) {
-    if (ms == null) return null;
+    if (ms == null || isNaN(ms)) return null;
+    if (ms <= 0) return '0m';
     const totalMin = Math.floor(ms / 60000);
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
@@ -296,12 +297,20 @@
       const snap = snapshots[agent];
       const sep = idx > 0 ? '<div class="provider-sep"></div>' : '';
 
+      // Special case: Gemini should always be a single Daily row
+      if (agent === 'gemini') {
+        const geminiWin = snap.short || snap.long;
+        // Prioritize the count display from 'long' if provided by telemetry
+        if (snap.long?.text) geminiWin.text = snap.long.text;
+        return sep + renderWindowRow(agent, 'Daily', geminiWin, false);
+      }
+
       if (snap.short && snap.long) {
         return sep
           + renderWindowRow(agent, '5 hr',  snap.short, false)
           + renderWindowRow(agent, '7 day', snap.long,  true);
       }
-      const tag = agent === 'gemini' ? 'Daily' : (snap.short ? 'Daily' : null);
+      const tag = snap.short ? 'Daily' : null;
       return sep + renderWindowRow(agent, tag, snap.short ?? snap.long, false);
     }).join('');
 
@@ -313,11 +322,22 @@
     const fillClass = barClass(window?.utilization);
     const barW = window?.utilization != null ? Math.min(100, Math.round(window.utilization)) : 0;
     const pct = window?.utilization;
-    const pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
-    const pctClass = pct != null ? '' : 'dim';
+    let pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
+    if (window?.text) pctDisplay = window.text;
+    const pctClass = pct != null || window?.text ? '' : 'dim';
     const rwMs = window?.runway_ms;
-    const rwText = fmtRunway(rwMs) ?? '—';
-    const rwClass = runwayClass(rwMs);
+    const resetsAt = window?.resets_at;
+    let rwText = fmtRunway(rwMs) ?? '—';
+    let rwClass = runwayClass(rwMs);
+
+    // If exhausted (runway_ms is 0), show time until reset instead
+    if (rwMs === 0 && resetsAt) {
+      const resetMs = new Date(resetsAt).getTime() - Date.now();
+      if (resetMs > 0) {
+        rwText = 'in ' + (fmtRunway(resetMs) ?? 'soon');
+        rwClass = 'crit';
+      }
+    }
 
     let iconHtml, labelHtml;
     if (isSub) {

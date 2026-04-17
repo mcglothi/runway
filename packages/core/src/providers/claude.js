@@ -93,6 +93,7 @@ async function fetchQuota({ sessionKey, apiKey, orgId, fetchFn, mode = 'pro' }) 
  */
 function estimateRunway(utilization, resetsAt) {
   if (!resetsAt || utilization == null) return null;
+  if (utilization >= 100) return 0;
   const resetMs = new Date(resetsAt).getTime();
   const nowMs = Date.now();
   const windowRemainingMs = resetMs - nowMs;

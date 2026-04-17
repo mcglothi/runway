@@ -39,6 +39,7 @@ const POPUP_WIDTH = 340;
 const POPUP_ROW_HEIGHT = 30; // px per window row
 const POPUP_CHROME = 88;     // header + footer fixed height
 const LOCAL_SERVER_PORT = 47821;
+const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 
 // Abbreviated labels used in the verbose tray title
 const TRAY_LABELS = { claude: 'C', codex: 'Cx', gemini: 'G', copilot: 'Cp' };
@@ -155,81 +156,92 @@ function ensureGeminiWindow() {
   const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
   geminiWin.webContents.setUserAgent(userAgent);
 
-  geminiWin.loadURL('https://aistudio.google.com/app/apikey');
+  geminiWin.loadURL('https://aistudio.google.com/app/usage');
   geminiWin.on('closed', () => { geminiWin = null; });
 
-  // Monitor network traffic to find the real usage endpoint
-  const geminiSession = geminiWin.webContents.session;
-  geminiSession.webRequest.onBeforeRequest({ urls: ['https://aistudio.google.com/api/*'] }, (details, callback) => {
-    if (details.url.includes('usage') || details.url.includes('quota') || details.url.includes('metrics') || details.url.includes('billing')) {
-      console.log(`[runway:gemini:discovery] Intercepted internal API call: ${details.url}`);
+  // Monitor network traffic using Debugger to capture response bodies
+  const view = geminiWin.webContents;
+  try {
+    if (!view.debugger.isAttached()) {
+      view.debugger.attach('1.3');
     }
-    callback({});
-  });
+    
+    view.debugger.on('message', async (event, method, params) => {
+      if (method === 'Network.responseReceived') {
+        const url = params.response.url;
+        // Intercept any JSON responses that look like usage data
+        if (url.includes('/api/') && (url.includes('usage') || url.includes('quota') || url.includes('models'))) {
+          // Allow some time for the response body to be ready in CDP
+          setTimeout(async () => {
+            try {
+              if (geminiWin && !geminiWin.isDestroyed()) {
+                const { body } = await view.debugger.sendCommand('Network.getResponseBody', { 
+                  requestId: params.requestId 
+                });
+                if (body) {
+                  try {
+                    const data = JSON.parse(body);
+                    console.log(`[runway:gemini:discovery] Captured valid JSON from ${url}`);
+                    global.latestGeminiUsage = data;
+                    // Trigger a re-poll if we found new data
+                    pollAll();
+                  } catch (e) {
+                    // Not valid JSON, skip
+                  }
+                }
+              }
+            } catch (e) {
+              // Body might be gone or not available yet
+            }
+          }, 500);
+        }
+      }
+    });
+
+    view.debugger.sendCommand('Network.enable');
+  } catch (err) {
+    console.error('[runway:gemini] Debugger attach failed:', err.message);
+  }
 
   return geminiWin;
 }
+
 async function geminiFetch(url) {
   const win = ensureGeminiWindow();
-  if (win.webContents.isLoading()) {
-    await new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  
+  // If we already captured data from background traffic, use it!
+  if (global.latestGeminiUsage) {
+    return global.latestGeminiUsage;
   }
 
-  // Debug: Log cookies in this partition
-  const cookies = await win.webContents.session.cookies.get({});
-  console.log(`[runway:gemini] Partition has ${cookies.length} cookies:`, cookies.map(c => c.name).join(', '));
+  // Non-blocking loading check: if it's still loading, just return null for now
+  if (win.webContents.isLoading()) {
+    console.log(`[runway:gemini] Window still loading (${win.getURL()}), skipping active fetch`);
+    return null;
+  }
 
   const currentUrl = win.getURL();
-  if (!currentUrl.includes('aistudio.google.com')) {
-    win.loadURL('https://aistudio.google.com/app/apikey');
-    await new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  if (!currentUrl.includes('aistudio.google.com/app/')) {
+    console.warn(`[runway:gemini] geminiFetch not on app page (${currentUrl}), redirecting...`);
+    win.loadURL('https://aistudio.google.com/app/usage');
+    return null;
   }
 
   const result = await win.webContents.executeJavaScript(`
     (async () => {
       try {
-        const p = '/api/usage';
-        const r = await fetch(p, { credentials: 'include' });
-        const body = await r.text();
+        const r = await fetch('/api/usage', { credentials: 'include' });
         const contentType = r.headers.get('content-type') || '';
-        
-        return { 
-          ok: r.ok, 
-          status: r.status, 
-          contentType, 
-          body: body.substring(0, 500),
-          isJson: contentType.includes('application/json')
-        };
+        if (!r.ok || !contentType.includes('application/json')) return { error: 'Not JSON or error' };
+        const data = await r.json();
+        return { data };
       } catch (err) {
         return { error: err.message };
       }
     })()
-  `);
+  `).catch(() => ({ error: 'executeJavaScript failed' }));
 
-  if (result.error) {
-    console.error(`[runway:gemini] Fetch failed:`, result.error);
-    throw new Error(result.error);
-  }
-
-  console.log(`[runway:gemini] Response (${result.status}):`, result.contentType);
-  
-  if (result.isJson) {
-    try {
-      const data = JSON.parse(result.body);
-      console.log(`[runway:gemini] usage data parsed successfully`);
-      return data;
-    } catch (e) {
-      console.error('[runway:gemini] JSON parse error:', e.message);
-    }
-  }
-
-  if (result.body.includes('Google Account') || result.body.includes('signin')) {
-    console.warn('[runway:gemini] usage API redirected to login page');
-    throw new Error('NOT_LOGGED_IN');
-  }
-
-  console.log(`[runway:gemini] unexpected response body:`, result.body.substring(0, 150));
-  throw new Error('No valid usage JSON found');
+  return result.data || null;
 }
 
 // ── Provider enable/disable ───────────────────────────────────────────────────
@@ -249,6 +261,21 @@ function isEnabled(config, provider) {
 // ── Poll all providers ────────────────────────────────────────────────────────
 async function pollAll() {
   const config = loadConfig();
+  
+  // Pre-initialize snapshots for all enabled providers so they show up in the UI immediately
+  const { makeSnapshot } = require('@runway/core');
+  for (const name of PROVIDER_ORDER) {
+    if (isEnabled(config, name)) {
+      if (!snapshots[name]) {
+        snapshots[name] = makeSnapshot(name);
+      }
+    } else {
+      delete snapshots[name];
+    }
+  }
+  pushToPopup();
+  updateTrayTitle();
+
   const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
   const results = await Promise.allSettled([
     tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
@@ -258,11 +285,15 @@ async function pollAll() {
   ]);
 
   for (const r of results) {
-    if (r.status === 'fulfilled' && r.value) {
-      snapshots[r.value.agent] = r.value;
+    if (r.status === 'fulfilled') {
+      const snap = r.value;
+      if (snap) {
+        snapshots[snap.agent] = snap;
+      }
     } else if (r.status === 'rejected') {
-      const who = r.reason?.provider ?? 'unknown';
-      console.error(`[runway:${who}] poll error:`, r.reason?.message ?? r.reason);
+      const idx = results.indexOf(r);
+      const name = PROVIDER_ORDER[idx] || 'unknown';
+      console.error(`[runway:${name}] poll error:`, r.reason?.message ?? r.reason);
     }
   }
 
@@ -381,13 +412,54 @@ async function pollCopilot(config) {
 }
 
 async function pollGemini(config) {
-  const { gemini } = require('@runway/core');
+  const { gemini, geminiTelemetry } = require('@runway/core');
   const mode = config.geminiMode || 'pro';
+
+  if (mode === 'telemetry') {
+    let filePath = config.geminiTelemetryPath || '~/.gemini/telemetry.json';
+    if (filePath.startsWith('~')) {
+      const os = require('os');
+      filePath = path.join(os.homedir(), filePath.slice(1));
+    }
+    console.log(`[runway:gemini] Telemetry mode active. Path: ${filePath}`);
+    try {
+      if (fs.existsSync(filePath)) {
+        const logContent = fs.readFileSync(filePath, 'utf8');
+        const snap = await geminiTelemetry.fetchQuota({ logContent });
+        console.log(`[runway:gemini] Telemetry snapshot: utilization=${snap.short?.utilization}% requests=${snap.raw?.totalRequests}`);
+        return snap;
+      } else {
+        console.warn(`[runway:gemini] Telemetry file NOT FOUND: ${filePath}`);
+        const { makeSnapshot } = require('@runway/core');
+        return makeSnapshot('gemini', { 
+          short: { utilization: null, resets_at: null, runway_ms: null },
+          long: { utilization: null, text: 'File missing' }
+        });
+      }
+    } catch (e) {
+      console.error('[runway:gemini] Telemetry read failed:', e.message);
+      const { makeSnapshot } = require('@runway/core');
+      return makeSnapshot('gemini', { 
+        short: { utilization: null, resets_at: null, runway_ms: null },
+        long: { utilization: null, text: 'Read error' }
+      });
+    }
+  }
 
   return gemini.fetchQuota({
     apiKey: config.geminiApiKey,
     fetchFn: mode === 'pro' ? geminiFetch : null,
     mode,
+  }).then(snap => {
+    // If Pro mode returned null (not logged in), provide a placeholder snapshot
+    if (!snap && mode === 'pro') {
+      const { makeSnapshot } = require('@runway/core');
+      return makeSnapshot('gemini', {
+        short: { utilization: null, resets_at: null, runway_ms: null },
+        long: { utilization: null, text: 'Not logged in' }
+      });
+    }
+    return snap;
   });
 }
 
@@ -567,6 +639,7 @@ ipcMain.handle('open-gemini-login', () => {
   win.focus();
   // Ensure it's not hidden when we want to log in
   win.setMenuBarVisibility(true);
+  win.loadURL('https://aistudio.google.com/app/usage');
 });
 
 // ── Local HTTP server (extension bridge) ──────────────────────────────────────
@@ -663,7 +736,7 @@ function startLocalServer() {
             }
             // Force the window to reload or navigate to ensure cookies take effect
             if (geminiWin && !geminiWin.isDestroyed()) {
-              geminiWin.loadURL('https://aistudio.google.com/app/apikey');
+              geminiWin.loadURL('https://aistudio.google.com/app/usage');
             }
           }
 

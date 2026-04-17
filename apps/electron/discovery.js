@@ -38,7 +38,7 @@ app.whenReady().then(() => {
     }
   });
 
-  win.loadURL('https://aistudio.google.com/app/apikey');
+  win.loadURL('https://aistudio.google.com/app/usage');
 
   win.on('closed', () => {
     console.log('Discovery window closed.');
