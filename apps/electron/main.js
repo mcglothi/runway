@@ -73,17 +73,19 @@ async function claudeFetch(url) {
 // ── Poll all providers ────────────────────────────────────────────────────────
 async function pollAll() {
   const config = loadConfig();
+  const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
   const results = await Promise.allSettled([
-    pollClaude(config),
-    pollCodex(config),
-    pollCopilot(config),
+    tag('claude',  pollClaude(config)),
+    tag('codex',   pollCodex(config)),
+    tag('copilot', pollCopilot(config)),
   ]);
 
   for (const r of results) {
     if (r.status === 'fulfilled' && r.value) {
       snapshots[r.value.agent] = r.value;
     } else if (r.status === 'rejected') {
-      console.error('[runway] poll error:', r.reason?.message ?? r.reason);
+      const who = r.reason?.provider ?? 'unknown';
+      console.error(`[runway:${who}] poll error:`, r.reason?.message ?? r.reason);
     }
   }
 
