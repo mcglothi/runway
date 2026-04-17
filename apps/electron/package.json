@@ -5,7 +5,10 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
-    "build": "electron-builder"
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux",
+    "build:win": "electron-builder --win"
   },
   "dependencies": {
     "@runway/core": "*"
@@ -17,9 +20,57 @@
   "build": {
     "appId": "com.mcglothi.runway",
     "productName": "Runway",
-    "mac": { "category": "public.app-category.developer-tools" },
-    "linux": { "target": "AppImage" },
-    "win": { "target": "nsis" }
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "directories": {
+      "buildResources": "build-assets",
+      "output": "../../dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.html",
+      "settings.html",
+      "discovery.js",
+      "icon.png",
+      "../../packages/core/src/**/*",
+      "../../packages/core/package.json",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ],
+      "icon": "build-assets/icon.icns",
+      "hardenedRuntime": true,
+      "entitlements": "build-assets/entitlements.mac.plist",
+      "entitlementsInherit": "build-assets/entitlements.mac.plist",
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Development"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "build-assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "mcglothi",
+      "repo": "runway"
+    }
   },
   "license": "MIT"
 }

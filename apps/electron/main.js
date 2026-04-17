@@ -36,8 +36,9 @@ let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const POPUP_WIDTH = 360;
-const POPUP_ROW_HEIGHT = 30; // px per window row
-const POPUP_CHROME = 88;     // header + footer fixed height
+const POPUP_ROW_HEIGHT = 30;  // px per window row
+const POPUP_CHROME = 88;      // header + footer fixed height
+const POPUP_HINT_HEIGHT = 56; // connect-hint banner, approximate
 const LOCAL_SERVER_PORT = 47821;
 const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 
@@ -306,12 +307,15 @@ async function pollAll() {
 function resizePopup() {
   if (!popupWin || popupWin.isDestroyed()) return;
   let rows = 0;
-  for (const snap of Object.values(snapshots)) {
-    // Providers with both short + long windows (Claude) render two rows
+  let anyNoData = false;
+  for (const [, snap] of Object.entries(snapshots)) {
+    // Copilot and Claude can render two rows (seats+accept or short+long)
     rows += (snap.short && snap.long) ? 2 : 1;
+    if (snap.short?.utilization == null && !snap.short?.text) anyNoData = true;
   }
   rows = Math.max(1, rows);
-  popupWin.setSize(POPUP_WIDTH, POPUP_CHROME + rows * POPUP_ROW_HEIGHT);
+  const hintExtra = anyNoData ? POPUP_HINT_HEIGHT : 0;
+  popupWin.setSize(POPUP_WIDTH, POPUP_CHROME + rows * POPUP_ROW_HEIGHT + hintExtra);
 }
 
 // ── Tray title (verbose mode) ─────────────────────────────────────────────────
@@ -416,11 +420,16 @@ async function pollGemini(config) {
   const mode = config.geminiMode || 'pro';
 
   if (mode === 'telemetry') {
-    let filePath = config.geminiTelemetryPath || '~/.gemini/telemetry.json';
+    // Resolve path: explicit config → auto-detect from ~/.gemini/settings.json → default
+    let filePath = config.geminiTelemetryPath;
+    if (!filePath) {
+      filePath = autoDetectGeminiTelemetryPath() || '~/.gemini/telemetry.json';
+    }
     if (filePath.startsWith('~')) {
       const os = require('os');
       filePath = path.join(os.homedir(), filePath.slice(1));
     }
+    ensureGeminiTelemetryWatcher(filePath);
     console.log(`[runway:gemini] Telemetry mode active. Path: ${filePath}`);
     try {
       if (fs.existsSync(filePath)) {
@@ -461,6 +470,72 @@ async function pollGemini(config) {
     }
     return snap;
   });
+}
+
+// ── Gemini telemetry auto-detection + file watcher ───────────────────────────
+let geminiTelemetryWatcher = null;
+let geminiTelemetryWatchedPath = null;
+
+/**
+ * Read ~/.gemini/settings.json and extract the telemetry outfile path.
+ * Falls back to the default location when telemetry is enabled but outfile
+ * isn't explicitly set.
+ */
+function autoDetectGeminiTelemetryPath() {
+  try {
+    const os = require('os');
+    const settingsPath = path.join(os.homedir(), '.gemini', 'settings.json');
+    if (!fs.existsSync(settingsPath)) return null;
+    const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+    const tel = settings?.telemetry;
+    if (!tel?.enabled) return null;
+    if (tel.outfile) {
+      return tel.outfile.startsWith('~')
+        ? path.join(os.homedir(), tel.outfile.slice(1))
+        : tel.outfile;
+    }
+    // enabled + target=local but no explicit outfile → default location
+    if (tel.target === 'local') {
+      return path.join(os.homedir(), '.gemini', 'telemetry.json');
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Watch the telemetry file for changes and trigger an immediate poll.
+ * Only attaches one watcher — recreates it if the path changes.
+ */
+function ensureGeminiTelemetryWatcher(filePath) {
+  if (geminiTelemetryWatcher && geminiTelemetryWatchedPath === filePath) return;
+
+  // Tear down old watcher if path changed
+  if (geminiTelemetryWatcher) {
+    try { geminiTelemetryWatcher.close(); } catch (_) {}
+    geminiTelemetryWatcher = null;
+  }
+
+  if (!filePath || !fs.existsSync(filePath)) return;
+
+  try {
+    geminiTelemetryWatcher = fs.watch(filePath, { persistent: false }, (eventType) => {
+      if (eventType === 'change') {
+        console.log('[runway:gemini] Telemetry file changed — polling');
+        pollAll();
+      }
+    });
+    geminiTelemetryWatcher.on('error', (err) => {
+      console.warn('[runway:gemini] Telemetry watcher error:', err.message);
+      geminiTelemetryWatcher = null;
+      geminiTelemetryWatchedPath = null;
+    });
+    geminiTelemetryWatchedPath = filePath;
+    console.log(`[runway:gemini] Watching telemetry: ${filePath}`);
+  } catch (e) {
+    console.warn('[runway:gemini] fs.watch failed:', e.message);
+  }
 }
 
 // ── Poll scheduling ───────────────────────────────────────────────────────────
@@ -816,4 +891,5 @@ app.on('window-all-closed', (e) => {
 app.on('before-quit', () => {
   if (pollTimer) clearInterval(pollTimer);
   if (localServer) localServer.close();
+  if (geminiTelemetryWatcher) { try { geminiTelemetryWatcher.close(); } catch (_) {} }
 });

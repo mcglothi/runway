@@ -74,9 +74,17 @@ async function fetchQuota({ token, enterprise, seatCount }) {
     ? Math.min(100, (acceptances / suggestions) * 100)
     : null;
 
+  // Human-readable seat count for the pct column
+  const seatText = seats != null
+    ? `${activeUsers ?? '?'}/${seats}`
+    : activeUsers != null
+    ? `${activeUsers} users`
+    : null;
+
   return makeSnapshot('copilot', {
     short: {
       utilization,
+      text:                seatText,
       resets_at:           null, // seat licenses don't have a quota reset
       runway_ms:           null,
       active_users:        activeUsers,
@@ -87,6 +95,12 @@ async function fetchQuota({ token, enterprise, seatCount }) {
       interactions:        interactions,
       report_day:          today?.day ?? record.report_end_day ?? null,
     },
+    long: acceptanceRate != null ? {
+      utilization:  acceptanceRate,   // drives the bar fill
+      text:         `${Math.round(acceptanceRate)}% accept`,
+      resets_at:    null,
+      runway_ms:    null,
+    } : null,
     raw: { manifest, records },
   });
 }

@@ -203,6 +203,41 @@
       text-decoration: none;
     }
     #not-configured a:hover { text-decoration: underline; }
+
+    /* Onboarding / connect hints */
+    #connect-hint {
+      margin: 4px 14px 6px;
+      padding: 9px 12px;
+      background: rgba(10, 132, 255, 0.07);
+      border: 1px solid rgba(10, 132, 255, 0.18);
+      border-radius: 8px;
+      font-size: 11px;
+      color: #636366;
+      line-height: 1.5;
+    }
+    #connect-hint strong { color: #aeaeb2; font-weight: 600; }
+    #connect-hint a { color: #0a84ff; cursor: pointer; text-decoration: none; }
+    #connect-hint a:hover { text-decoration: underline; }
+
+    /* Skeleton loading shimmer */
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+    .skel {
+      border-radius: 3px;
+      height: 5px;
+      background: linear-gradient(to right, #2c2c2e 8%, #3a3a3c 18%, #2c2c2e 33%);
+      background-size: 800px 100%;
+      animation: shimmer 1.4s linear infinite;
+    }
+    .skel-text {
+      height: 10px;
+      border-radius: 3px;
+      background: linear-gradient(to right, #2c2c2e 8%, #3a3a3c 18%, #2c2c2e 33%);
+      background-size: 800px 100%;
+      animation: shimmer 1.4s linear infinite;
+    }
   </style>
 </head>
 <body>
@@ -221,6 +256,8 @@
 <div id="gauges">
   <!-- rows injected by JS -->
 </div>
+
+<div id="connect-hint" style="display:none"></div>
 
 <div id="footer">
   <span id="last-updated">—</span>
@@ -288,8 +325,12 @@
     return 'ok';
   }
 
-  function barClass(pct) {
+  function barClass(pct, invert = false) {
     if (pct == null) return 'none';
+    if (invert) {
+      // Higher is better (e.g. acceptance rate) — just use a neutral fill
+      return 'low';
+    }
     if (pct >= 80) return 'high';
     if (pct >= 50) return 'mid';
     return 'low';
@@ -314,6 +355,15 @@
       const snap = snapshots[agent];
       const sep = idx > 0 ? '<div class="provider-sep"></div>' : '';
 
+      // Special case: Copilot — seat utilization row + optional acceptance rate sub-row
+      if (agent === 'copilot') {
+        const mainRow = renderWindowRow(agent, snap.short?.total_seats ? 'seats' : null, snap.short, false);
+        const subRow  = snap.long?.text
+          ? renderWindowRow(agent, 'accept', snap.long, true, false, true)
+          : '';
+        return sep + mainRow + subRow;
+      }
+
       // Special case: Gemini should always be a single Daily row
       if (agent === 'gemini') {
         // Spread to avoid mutating the original snapshot object
@@ -336,9 +386,9 @@
     gauges.innerHTML = html;
   }
 
-  function renderWindowRow(agent, windowTag, window, isSub, signInHint = false) {
+  function renderWindowRow(agent, windowTag, window, isSub, signInHint = false, invertBar = false) {
     const prov = PROVIDERS[agent] ?? { name: agent.charAt(0).toUpperCase() + agent.slice(1), icon: '' };
-    const fillClass = barClass(window?.utilization);
+    const fillClass = barClass(window?.utilization, invertBar);
     const barW = window?.utilization != null ? Math.min(100, Math.round(window.utilization)) : 0;
     const pct = window?.utilization;
     let pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
@@ -400,6 +450,76 @@
     </div>`;
   }
 
+  // ── Onboarding / connect hints ───────────────────────────────────────────────
+  let firstPollDone = false;
+
+  /**
+   * Returns true when a snapshot has real data (non-null utilization or a
+   * non-error, non-"Not logged in" text value).
+   */
+  function snapHasData(snap) {
+    if (!snap) return false;
+    const win = snap.short ?? snap.long;
+    if (win?.utilization != null) return true;
+    const t = win?.text;
+    if (t && t !== 'Not logged in' && t !== 'File missing' && t !== 'Read error') return true;
+    return false;
+  }
+
+  /**
+   * After each render, decide whether to show the connect hint.
+   * - Before first poll: show skeleton shimmer (handled in render itself)
+   * - After first poll, some providers have no data: show connect hint
+   * - All providers have data: hide hint
+   */
+  function updateConnectHint(snapshots) {
+    const hint = document.getElementById('connect-hint');
+    if (!hint) return;
+
+    if (!firstPollDone) {
+      hint.style.display = 'none';
+      return;
+    }
+
+    const noData = Object.entries(snapshots).filter(([, s]) => !snapHasData(s));
+    if (noData.length === 0) {
+      hint.style.display = 'none';
+      return;
+    }
+
+    const lines = noData.map(([agent]) => {
+      switch (agent) {
+        case 'claude':
+          return `<strong>Claude</strong> — <a id="hint-claude">sign in to claude.ai</a> in the Runway window`;
+        case 'codex':
+          return `<strong>Codex</strong> — <a id="hint-codex">sign in to chatgpt.com</a> in the Runway window`;
+        case 'gemini':
+          return `<strong>Gemini</strong> — <a id="hint-gemini">sign in to AI Studio</a> or switch to Telemetry mode`;
+        case 'copilot':
+          return `<strong>Copilot</strong> — add your GitHub token in <a id="hint-settings">Settings</a>`;
+        default:
+          return null;
+      }
+    }).filter(Boolean);
+
+    if (lines.length === 0) {
+      hint.style.display = 'none';
+      return;
+    }
+
+    hint.style.display = 'block';
+    hint.innerHTML = lines.join('<br>');
+
+    // Wire up link handlers after injecting HTML
+    document.getElementById('hint-claude')?.addEventListener('click', () => {
+      const win = window.open('https://claude.ai', '_blank');
+      if (win) win.opener = null;
+    });
+    document.getElementById('hint-codex')?.addEventListener('click', () => window.runway.openChatGptLogin());
+    document.getElementById('hint-gemini')?.addEventListener('click', () => window.runway.openGeminiLogin());
+    document.getElementById('hint-settings')?.addEventListener('click', () => window.runway.openSettings());
+  }
+
   // ── Footer: live "Updated X ago" ─────────────────────────────────────────────
   let lastPollMs = null;
 
@@ -440,13 +560,18 @@
   });
 
   window.runway.onSnapshots((data) => {
+    firstPollDone = true;
     render(data);
+    updateConnectHint(data);
     lastPollMs = Date.now();
     updateFooter();
   });
 
   window.runway.getSnapshots().then((data) => {
+    // If snapshots already exist (app has polled before), treat as done
+    if (Object.keys(data).length > 0) firstPollDone = true;
     render(data);
+    updateConnectHint(data);
     // Use the snapshot timestamp if we don't have a local poll time yet
     const times = Object.values(data).map(s => new Date(s.ts_utc).getTime()).filter(Boolean);
     if (times.length && !lastPollMs) {
