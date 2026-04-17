@@ -31,7 +31,8 @@ let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const POPUP_WIDTH = 340;
-const POPUP_HEIGHT = 200; // grows with more providers
+const POPUP_ROW_HEIGHT = 32; // px per provider row
+const POPUP_CHROME = 88;     // header + footer fixed height
 const LOCAL_SERVER_PORT = 47821;
 
 let localServer = null;
@@ -76,14 +77,29 @@ async function claudeFetch(url) {
   `);
 }
 
+// ── Provider enable/disable ───────────────────────────────────────────────────
+// A provider is enabled unless the config explicitly sets it to false.
+// Claude defaults to enabled; others default to enabled only when credentials exist.
+function isEnabled(config, provider) {
+  const key = `${provider}Enabled`;
+  if (key in config) return config[key] !== false && config[key] !== 'false';
+  // If no explicit flag, enable if credentials are present (or always for claude)
+  if (provider === 'claude') return true;
+  if (provider === 'codex')   return !!config.codexApiKey;
+  if (provider === 'copilot') return !!(config.copilotToken && config.copilotEnterprise);
+  if (provider === 'gemini')  return !!config.geminiApiKey;
+  return false;
+}
+
 // ── Poll all providers ────────────────────────────────────────────────────────
 async function pollAll() {
   const config = loadConfig();
   const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
   const results = await Promise.allSettled([
-    tag('claude',  pollClaude(config)),
-    tag('codex',   pollCodex(config)),
-    tag('copilot', pollCopilot(config)),
+    tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
+    tag('codex',   isEnabled(config, 'codex')   ? pollCodex(config)   : Promise.resolve(null)),
+    tag('copilot', isEnabled(config, 'copilot') ? pollCopilot(config) : Promise.resolve(null)),
+    tag('gemini',  isEnabled(config, 'gemini')  ? pollGemini(config)  : Promise.resolve(null)),
   ]);
 
   for (const r of results) {
@@ -95,8 +111,16 @@ async function pollAll() {
     }
   }
 
+  resizePopup();
   pushToPopup();
   maybeWriteToAikb();
+}
+
+function resizePopup() {
+  if (!popupWin || popupWin.isDestroyed()) return;
+  const count = Math.max(1, Object.keys(snapshots).length);
+  const h = POPUP_CHROME + count * POPUP_ROW_HEIGHT;
+  popupWin.setSize(POPUP_WIDTH, h);
 }
 
 async function pollClaude(config) {
@@ -134,6 +158,12 @@ async function pollCopilot(config) {
     token: config.copilotToken,
     enterprise: config.copilotEnterprise,
   });
+}
+
+async function pollGemini(config) {
+  if (!config.geminiApiKey) return null;
+  const { gemini } = require('@runway/core');
+  return gemini.fetchQuota({ apiKey: config.geminiApiKey });
 }
 
 function maybeWriteToAikb() {
@@ -275,12 +305,14 @@ ipcMain.handle('get-snapshots', () => snapshots);
 ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('save-config', (_e, data) => {
   saveConfig(data);
-  // Re-poll immediately with new credentials
+  // Clear snapshots so disabled providers disappear immediately from the gauge
+  snapshots = {};
   pollAll();
   return { ok: true };
 });
 ipcMain.handle('open-settings', openSettings);
-ipcMain.handle('open-claude', () => shell.openExternal('https://claude.ai'));
+ipcMain.handle('open-claude',    () => shell.openExternal('https://claude.ai'));
+ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.handle('refresh', () => pollAll());
 
 // ── Local HTTP server (extension bridge) ──────────────────────────────────────

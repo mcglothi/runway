@@ -162,7 +162,8 @@
 </div>
 
 <script>
-  const PROVIDERS = ['claude', 'codex', 'copilot', 'gemini'];
+  // Preferred display order — only providers with snapshot data will be shown
+  const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 
   // ── Format helpers ──────────────────────────────────────────────────────────
   function fmtRunway(ms) {
@@ -202,9 +203,10 @@
       return;
     }
 
-    const rows = PROVIDERS.map(agent => {
+    // Render only providers that have snapshot data, in preferred order
+    const activeAgents = PROVIDER_ORDER.filter(a => snapshots[a]);
+    const rows = activeAgents.map(agent => {
       const snap = snapshots[agent];
-      if (!snap) return renderRow(agent, null);
       return renderRow(agent, snap.short ?? snap.long ?? null);
     }).join('');
 

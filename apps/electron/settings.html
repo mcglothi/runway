@@ -12,7 +12,7 @@
       color: #e5e5ea;
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
       font-size: 13px;
-      padding: 20px 24px;
+      padding: 20px 24px 24px;
     }
 
     h1 {
@@ -23,21 +23,77 @@
     }
 
     section {
-      margin-bottom: 22px;
+      margin-bottom: 18px;
+      border: 1px solid #2c2c2e;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #2c2c2e;
+      cursor: default;
     }
 
     .section-title {
-      font-size: 11px;
+      font-size: 12px;
       font-weight: 600;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
-      color: #636366;
-      margin-bottom: 8px;
+      color: #e5e5ea;
     }
+
+    /* Toggle switch */
+    .toggle-wrap {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .toggle-label {
+      font-size: 11px;
+      color: #636366;
+    }
+    .toggle {
+      position: relative;
+      width: 34px;
+      height: 20px;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      border-radius: 10px;
+      background: #3a3a3c;
+      transition: background 0.2s;
+      cursor: pointer;
+    }
+    .toggle-track::after {
+      content: '';
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #8e8e93;
+      transition: transform 0.2s, background 0.2s;
+    }
+    .toggle input:checked + .toggle-track { background: #0a84ff; }
+    .toggle input:checked + .toggle-track::after {
+      transform: translateX(14px);
+      background: #fff;
+    }
+
+    .section-body {
+      padding: 12px 14px;
+    }
+    .section-body.hidden { display: none; }
 
     .field {
       margin-bottom: 10px;
     }
+    .field:last-child { margin-bottom: 0; }
 
     label {
       display: block;
@@ -49,7 +105,7 @@
     input[type="text"],
     input[type="password"] {
       width: 100%;
-      background: #2c2c2e;
+      background: #1c1c1e;
       border: 1px solid #3a3a3c;
       border-radius: 6px;
       color: #e5e5ea;
@@ -66,12 +122,7 @@
       margin-top: 3px;
       line-height: 1.4;
     }
-
-    .hint a {
-      color: #0a84ff;
-      cursor: pointer;
-      text-decoration: none;
-    }
+    .hint a { color: #0a84ff; cursor: pointer; text-decoration: none; }
     .hint a:hover { text-decoration: underline; }
 
     .row-actions {
@@ -93,14 +144,8 @@
     button:hover { opacity: 0.85; }
     button:active { opacity: 0.7; }
 
-    #btn-save {
-      background: #0a84ff;
-      color: #fff;
-    }
-    #btn-cancel {
-      background: #2c2c2e;
-      color: #aeaeb2;
-    }
+    #btn-save   { background: #0a84ff; color: #fff; }
+    #btn-cancel { background: #2c2c2e; color: #aeaeb2; }
 
     #status {
       font-size: 12px;
@@ -108,12 +153,6 @@
       min-height: 18px;
     }
     #status.error { color: #ff453a; }
-
-    hr {
-      border: none;
-      border-top: 1px solid #2c2c2e;
-      margin: 4px 0 16px;
-    }
   </style>
 </head>
 <body>
@@ -122,58 +161,109 @@
 
 <!-- Claude -->
 <section>
-  <div class="section-title">Claude</div>
-  <hr>
-  <div class="field">
-    <label>Session (via browser window)</label>
-    <div class="hint">
-      Claude auth is handled automatically — just
-      <a id="open-claude">sign in at claude.ai</a> once in the hidden browser window
-      that Runway manages, and quota will be fetched from there.
+  <div class="section-header">
+    <span class="section-title">Claude</span>
+    <div class="toggle-wrap">
+      <span class="toggle-label" id="label-claude"></span>
+      <label class="toggle">
+        <input type="checkbox" id="claudeEnabled" checked />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  </div>
+  <div class="section-body" id="body-claude">
+    <div class="field">
+      <div class="hint">
+        Auth is handled automatically — <a id="open-claude">sign in at claude.ai</a> once,
+        then use the Runway browser extension to sync your session.
+      </div>
     </div>
   </div>
 </section>
 
 <!-- Codex / OpenAI -->
 <section>
-  <div class="section-title">Codex / OpenAI</div>
-  <hr>
-  <div class="field">
-    <label for="codexApiKey">Admin API Key</label>
-    <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
-    <div class="hint">Requires org:read scope to read usage data.</div>
+  <div class="section-header">
+    <span class="section-title">Codex / OpenAI</span>
+    <div class="toggle-wrap">
+      <span class="toggle-label" id="label-codex"></span>
+      <label class="toggle">
+        <input type="checkbox" id="codexEnabled" />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
   </div>
-  <div class="field">
-    <label for="codexTokenLimit">Daily Token Limit (optional)</label>
-    <input type="text" id="codexTokenLimit" placeholder="e.g. 1000000" autocomplete="off" />
-    <div class="hint">Combined input + output token budget per day. Enables utilization % and runway estimate.</div>
+  <div class="section-body hidden" id="body-codex">
+    <div class="field">
+      <label for="codexApiKey">Admin API Key</label>
+      <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
+      <div class="hint">Requires org:read scope.</div>
+    </div>
+    <div class="field">
+      <label for="codexTokenLimit">Daily Token Limit</label>
+      <input type="text" id="codexTokenLimit" placeholder="e.g. 1000000" autocomplete="off" />
+      <div class="hint">Combined input + output tokens per day. Enables utilization % and runway estimate.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Gemini -->
+<section>
+  <div class="section-header">
+    <span class="section-title">Gemini</span>
+    <div class="toggle-wrap">
+      <span class="toggle-label" id="label-gemini"></span>
+      <label class="toggle">
+        <input type="checkbox" id="geminiEnabled" />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
+  </div>
+  <div class="section-body hidden" id="body-gemini">
+    <div class="field">
+      <label for="geminiApiKey">API Key</label>
+      <input type="password" id="geminiApiKey" placeholder="AIza…" autocomplete="off" />
+      <div class="hint">From <a id="open-aistudio">aistudio.google.com/app/apikey</a>. Quota tracking not yet available via AI Studio API — shows as connected only.</div>
+    </div>
   </div>
 </section>
 
 <!-- GitHub Copilot Enterprise -->
 <section>
-  <div class="section-title">GitHub Copilot Enterprise</div>
-  <hr>
-  <div class="field">
-    <label for="copilotToken">GitHub Token</label>
-    <input type="password" id="copilotToken" placeholder="ghp_… or installation token" autocomplete="off" />
-    <div class="hint">Fine-grained PAT or GitHub App installation token with Copilot metrics read access.</div>
+  <div class="section-header">
+    <span class="section-title">GitHub Copilot Enterprise</span>
+    <div class="toggle-wrap">
+      <span class="toggle-label" id="label-copilot"></span>
+      <label class="toggle">
+        <input type="checkbox" id="copilotEnabled" />
+        <span class="toggle-track"></span>
+      </label>
+    </div>
   </div>
-  <div class="field">
-    <label for="copilotEnterprise">Enterprise Slug</label>
-    <input type="text" id="copilotEnterprise" placeholder="my-org-enterprise" autocomplete="off" />
-    <div class="hint">The enterprise slug from your GitHub Enterprise URL.</div>
+  <div class="section-body hidden" id="body-copilot">
+    <div class="field">
+      <label for="copilotToken">GitHub Token</label>
+      <input type="password" id="copilotToken" placeholder="ghp_…" autocomplete="off" />
+      <div class="hint">Fine-grained PAT with Copilot metrics read access.</div>
+    </div>
+    <div class="field">
+      <label for="copilotEnterprise">Enterprise Slug</label>
+      <input type="text" id="copilotEnterprise" placeholder="my-org-enterprise" autocomplete="off" />
+    </div>
   </div>
 </section>
 
 <!-- AIKB integration -->
 <section>
-  <div class="section-title">AIKB Integration</div>
-  <hr>
-  <div class="field">
-    <label for="aikbEventsDir">Events Directory (optional)</label>
-    <input type="text" id="aikbEventsDir" placeholder="/path/to/AIKB/_runtime/events" autocomplete="off" />
-    <div class="hint">If set, quota snapshots are appended to your AIKB runtime event log after each poll.</div>
+  <div class="section-header">
+    <span class="section-title">AIKB Integration</span>
+  </div>
+  <div class="section-body">
+    <div class="field">
+      <label for="aikbEventsDir">Events Directory</label>
+      <input type="text" id="aikbEventsDir" placeholder="/path/to/AIKB/_runtime/events" autocomplete="off" />
+      <div class="hint">If set, quota snapshots are appended to your AIKB runtime event log after each poll.</div>
+    </div>
   </div>
 </section>
 
@@ -184,8 +274,34 @@
 </div>
 
 <script>
-  const fields = ['codexApiKey', 'codexTokenLimit', 'copilotToken', 'copilotEnterprise', 'aikbEventsDir'];
+  const PROVIDERS = ['claude', 'codex', 'gemini', 'copilot'];
 
+  const CREDENTIAL_FIELDS = [
+    'codexApiKey', 'codexTokenLimit',
+    'geminiApiKey',
+    'copilotToken', 'copilotEnterprise',
+    'aikbEventsDir',
+  ];
+
+  // ── Toggle show/hide section body based on enabled state ──────────────────
+  function syncBody(provider) {
+    const checkbox = document.getElementById(`${provider}Enabled`);
+    const body = document.getElementById(`body-${provider}`);
+    const label = document.getElementById(`label-${provider}`);
+    if (!checkbox || !body) return;
+    const enabled = checkbox.checked;
+    body.classList.toggle('hidden', !enabled);
+    if (label) label.textContent = enabled ? 'On' : 'Off';
+  }
+
+  PROVIDERS.forEach(p => {
+    const checkbox = document.getElementById(`${p}Enabled`);
+    if (!checkbox) return;
+    checkbox.addEventListener('change', () => syncBody(p));
+    syncBody(p); // initial state
+  });
+
+  // ── Status helper ──────────────────────────────────────────────────────────
   function setStatus(msg, isError = false) {
     const el = document.getElementById('status');
     el.textContent = msg;
@@ -193,24 +309,46 @@
     if (msg && !isError) setTimeout(() => { if (el.textContent === msg) el.textContent = ''; }, 2500);
   }
 
-  // Load current config
+  // ── Load current config ────────────────────────────────────────────────────
   window.runway.getConfig().then(config => {
-    for (const key of fields) {
+    for (const key of CREDENTIAL_FIELDS) {
       const el = document.getElementById(key);
       if (el && config[key]) el.value = config[key];
     }
+    for (const provider of PROVIDERS) {
+      const checkbox = document.getElementById(`${provider}Enabled`);
+      if (!checkbox) continue;
+      const key = `${provider}Enabled`;
+      if (key in config) {
+        checkbox.checked = config[key] !== false && config[key] !== 'false';
+      }
+      // If no saved flag, default: claude always on; others on if credentials exist
+      syncBody(provider);
+    }
   });
 
-  document.getElementById('open-claude').addEventListener('click', () => {
+  // ── Link handlers ──────────────────────────────────────────────────────────
+  document.getElementById('open-claude')?.addEventListener('click', () => {
     window.runway.openClaude();
   });
+  document.getElementById('open-aistudio')?.addEventListener('click', () => {
+    window.runway.openExternal('https://aistudio.google.com/app/apikey');
+  });
 
+  // ── Save ───────────────────────────────────────────────────────────────────
   document.getElementById('btn-save').addEventListener('click', async () => {
     const data = {};
-    for (const key of fields) {
+
+    for (const key of CREDENTIAL_FIELDS) {
       const val = document.getElementById(key)?.value?.trim();
       if (val) data[key] = val;
     }
+
+    for (const provider of PROVIDERS) {
+      const checkbox = document.getElementById(`${provider}Enabled`);
+      if (checkbox) data[`${provider}Enabled`] = checkbox.checked;
+    }
+
     try {
       await window.runway.saveConfig(data);
       setStatus('Saved — refreshing…');
