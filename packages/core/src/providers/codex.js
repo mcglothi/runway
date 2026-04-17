@@ -18,10 +18,11 @@ const USAGE_ENDPOINT = 'https://api.openai.com/v1/organization/usage/completions
 
 /**
  * @param {Object} opts
- * @param {string} opts.apiKey   - OpenAI admin API key (sk-...)
+ * @param {string} opts.apiKey        - OpenAI admin API key (sk-...)
+ * @param {number} [opts.tokenLimit]  - user-configured daily token limit (input + output combined)
  * @returns {Promise<import('../schema').QuotaSnapshot>}
  */
-async function fetchQuota({ apiKey }) {
+async function fetchQuota({ apiKey, tokenLimit }) {
   if (!apiKey) throw new Error('Codex: apiKey is required');
 
   const now = Math.floor(Date.now() / 1000);
@@ -57,14 +58,34 @@ async function fetchQuota({ apiKey }) {
     }
   }
 
-  // OpenAI doesn't expose a quota limit via this API — only consumption.
-  // We store raw counts and surface them as absolute numbers, not a percentage.
-  // utilization is set to null until the user configures a known limit.
+  const totalTokens = inputTokens + outputTokens;
+  const resetsAt = new Date((startOfDay + 86400) * 1000).toISOString();
+
+  let utilization = null;
+  let runway_ms = null;
+
+  if (tokenLimit && tokenLimit > 0) {
+    utilization = Math.min(100, (totalTokens / tokenLimit) * 100);
+
+    // Estimate burn rate from tokens used so far today vs. elapsed time.
+    // If no tokens used yet, full window remains.
+    const elapsedMs = (now - startOfDay) * 1000;
+    if (totalTokens > 0 && elapsedMs > 0) {
+      const burnRatePerMs = totalTokens / elapsedMs;
+      const remainingTokens = tokenLimit - totalTokens;
+      runway_ms = remainingTokens > 0
+        ? Math.round(remainingTokens / burnRatePerMs)
+        : 0;
+    } else {
+      runway_ms = (startOfDay + 86400 - now) * 1000; // full day remaining
+    }
+  }
+
   return makeSnapshot('codex', {
     short: {
-      utilization: null,
-      resets_at: new Date((startOfDay + 86400) * 1000).toISOString(),
-      runway_ms: null,
+      utilization,
+      resets_at: resetsAt,
+      runway_ms,
       input_tokens: inputTokens,
       output_tokens: outputTokens,
     },

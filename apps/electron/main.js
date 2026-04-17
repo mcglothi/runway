@@ -111,7 +111,8 @@ async function pollClaude(config) {
 async function pollCodex(config) {
   if (!config.codexApiKey) return null;
   const { codex } = require('@runway/core');
-  return codex.fetchQuota({ apiKey: config.codexApiKey });
+  const tokenLimit = config.codexTokenLimit ? Number(config.codexTokenLimit) : undefined;
+  return codex.fetchQuota({ apiKey: config.codexApiKey, tokenLimit });
 }
 
 async function pollCopilot(config) {

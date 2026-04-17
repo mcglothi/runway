@@ -143,6 +143,11 @@
     <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
     <div class="hint">Requires org:read scope to read usage data.</div>
   </div>
+  <div class="field">
+    <label for="codexTokenLimit">Daily Token Limit (optional)</label>
+    <input type="text" id="codexTokenLimit" placeholder="e.g. 1000000" autocomplete="off" />
+    <div class="hint">Combined input + output token budget per day. Enables utilization % and runway estimate.</div>
+  </div>
 </section>
 
 <!-- GitHub Copilot Enterprise -->
@@ -179,7 +184,7 @@
 </div>
 
 <script>
-  const fields = ['codexApiKey', 'copilotToken', 'copilotEnterprise', 'aikbEventsDir'];
+  const fields = ['codexApiKey', 'codexTokenLimit', 'copilotToken', 'copilotEnterprise', 'aikbEventsDir'];
 
   function setStatus(msg, isError = false) {
     const el = document.getElementById('status');
