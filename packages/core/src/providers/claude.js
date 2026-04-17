@@ -31,13 +31,15 @@ async function fetchQuota({ sessionKey, orgId, fetchFn }) {
   if (!sessionKey) throw new Error('Claude: sessionKey is required');
   if (!fetchFn) throw new Error('Claude: fetchFn is required');
 
-  // Resolve orgId if not cached
+  // Resolve orgId if not cached.
+  // The organizations endpoint returns a numeric `id` and a `uuid` field.
+  // The usage endpoint requires the UUID form.
   if (!orgId) {
     const orgs = await fetchFn('https://claude.ai/api/organizations');
     if (!Array.isArray(orgs) || orgs.length === 0) {
       throw new Error('Claude: no organizations found');
     }
-    orgId = orgs[0].id;
+    orgId = orgs[0].uuid ?? orgs[0].id;
   }
 
   const data = await fetchFn(`https://claude.ai/api/organizations/${orgId}/usage`);
