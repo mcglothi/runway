@@ -6,6 +6,8 @@
   "permissions": ["cookies"],
   "host_permissions": [
     "https://claude.ai/*",
+    "https://aistudio.google.com/*",
+    "https://*.google.com/*",
     "http://localhost:47821/*"
   ],
   "action": {

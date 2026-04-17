@@ -1,96 +1,98 @@
 /**
- * Codex / OpenAI provider
+ * Codex / ChatGPT provider
  *
- * Fetches usage from OpenAI's organization usage API.
- * Requires an admin API key with org:read scope.
+ * Fetches Codex usage quota from chatgpt.com's internal usage API.
+ * Uses a browser session (same approach as Claude) to bypass Cloudflare.
  *
  * Endpoints:
- *   GET https://api.openai.com/v1/organization/usage/completions
- *     ?start_time=<unix>&end_time=<unix>&bucket_width=1d
+ *   GET https://chatgpt.com/backend-api/wham/usage
+ *     → rate_limit.primary_window  (5-hour window)
+ *     → rate_limit.secondary_window (7-day window)
  *
- * This is the paid API path. The Codex CLI free-tier consumer quota
- * has no public API endpoint — free-tier tracking requires local shim.
+ * Auth: chatgpt.com session cookies + Bearer JWT from /api/auth/session
+ * Both are obtained automatically via the hidden BrowserWindow session.
  */
 
 const { makeSnapshot } = require('../schema');
 
-const USAGE_ENDPOINT = 'https://api.openai.com/v1/organization/usage/completions';
+const USAGE_ENDPOINT = 'https://chatgpt.com/backend-api/wham/usage';
 
 /**
  * @param {Object} opts
- * @param {string} opts.apiKey        - OpenAI admin API key (sk-...)
- * @param {number} [opts.tokenLimit]  - user-configured daily token limit (input + output combined)
- * @returns {Promise<import('../schema').QuotaSnapshot>}
+ * @param {Function} [opts.fetchFn] - async (url) => parsed JSON, provided by Electron main
+ * @param {string} [opts.apiKey]    - OpenAI API key
+ * @param {string} [opts.mode]      - 'pro' (default) or 'api'
+ * @returns {Promise<import('../schema').QuotaSnapshot | null>}
  */
-async function fetchQuota({ apiKey, tokenLimit }) {
-  if (!apiKey) throw new Error('Codex: apiKey is required');
-
-  const now = Math.floor(Date.now() / 1000);
-  const startOfDay = now - (now % 86400); // start of current UTC day
-
-  const url = new URL(USAGE_ENDPOINT);
-  url.searchParams.set('start_time', startOfDay);
-  url.searchParams.set('end_time', now);
-  url.searchParams.set('bucket_width', '1d');
-
-  const res = await fetch(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-    },
-  });
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Codex: API error ${res.status}: ${body.substring(0, 200)}`);
+async function fetchQuota({ fetchFn, apiKey, mode = 'pro' }) {
+  if (mode === 'api') {
+    if (!apiKey) throw new Error('Codex: apiKey is required for API mode');
+    // Basic check for API key validity
+    const res = await fetch('https://api.openai.com/v1/models', {
+      headers: { 'Authorization': `Bearer ${apiKey}` },
+    });
+    if (res.status === 401) throw new Error('Codex: Invalid API Key');
+    // OpenAI API doesn't have a simple usage endpoint for rate limits yet
+    return makeSnapshot('codex', { short: null, raw: { status: res.status } });
   }
 
-  const data = await res.json();
+  if (!fetchFn) throw new Error('Codex: fetchFn is required');
 
-  // Sum today's token usage across all buckets
-  const buckets = data.data ?? [];
-  let inputTokens = 0;
-  let outputTokens = 0;
-  for (const bucket of buckets) {
-    for (const result of bucket.results ?? []) {
-      inputTokens += result.input_tokens ?? 0;
-      outputTokens += result.output_tokens ?? 0;
-    }
-  }
+  const data = await fetchFn(USAGE_ENDPOINT);
+  if (!data?.rate_limit) return null; // not logged in or no quota data
 
-  const totalTokens = inputTokens + outputTokens;
-  const resetsAt = new Date((startOfDay + 86400) * 1000).toISOString();
-
-  let utilization = null;
-  let runway_ms = null;
-
-  if (tokenLimit && tokenLimit > 0) {
-    utilization = Math.min(100, (totalTokens / tokenLimit) * 100);
-
-    // Estimate burn rate from tokens used so far today vs. elapsed time.
-    // If no tokens used yet, full window remains.
-    const elapsedMs = (now - startOfDay) * 1000;
-    if (totalTokens > 0 && elapsedMs > 0) {
-      const burnRatePerMs = totalTokens / elapsedMs;
-      const remainingTokens = tokenLimit - totalTokens;
-      runway_ms = remainingTokens > 0
-        ? Math.round(remainingTokens / burnRatePerMs)
-        : 0;
-    } else {
-      runway_ms = (startOfDay + 86400 - now) * 1000; // full day remaining
-    }
-  }
+  const primary   = data.rate_limit.primary_window;
+  const secondary = data.rate_limit.secondary_window;
 
   return makeSnapshot('codex', {
-    short: {
-      utilization,
-      resets_at: resetsAt,
-      runway_ms,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
-    },
+    short: primary ? {
+      utilization: primary.used_percent ?? null,
+      resets_at:   primary.reset_at
+        ? new Date(primary.reset_at * 1000).toISOString()
+        : null,
+      runway_ms: estimateRunway(
+        primary.used_percent,
+        primary.limit_window_seconds,
+        primary.reset_after_seconds,
+      ),
+    } : null,
+    long: secondary ? {
+      utilization: secondary.used_percent ?? null,
+      resets_at:   secondary.reset_at
+        ? new Date(secondary.reset_at * 1000).toISOString()
+        : null,
+      runway_ms: estimateRunway(
+        secondary.used_percent,
+        secondary.limit_window_seconds,
+        secondary.reset_after_seconds,
+      ),
+    } : null,
     raw: data,
   });
+}
+
+/**
+ * Compute runway from the exact window metrics returned by the wham API.
+ * More accurate than estimation from reset time alone because we know
+ * both the total window duration and the time elapsed within it.
+ *
+ * @param {number} usedPercent       - 0–100
+ * @param {number} windowSeconds     - total window duration in seconds
+ * @param {number} resetAfterSeconds - seconds remaining until window resets
+ * @returns {number|null}            - estimated ms until quota exhausted
+ */
+function estimateRunway(usedPercent, windowSeconds, resetAfterSeconds) {
+  if (usedPercent == null || windowSeconds == null || resetAfterSeconds == null) return null;
+  if (usedPercent >= 100) return 0;
+  if (usedPercent <= 0)   return resetAfterSeconds * 1000; // nothing burned yet
+
+  const elapsedSeconds = windowSeconds - resetAfterSeconds;
+  if (elapsedSeconds <= 0) return null;
+
+  // burn rate: percent consumed per second
+  const burnRatePerSecond = usedPercent / elapsedSeconds;
+  const remainingPercent  = 100 - usedPercent;
+  return Math.round((remainingPercent / burnRatePerSecond) * 1000);
 }
 
 module.exports = { fetchQuota };

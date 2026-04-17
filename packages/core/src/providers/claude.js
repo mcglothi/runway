@@ -22,12 +22,35 @@ const { makeSnapshot } = require('../schema');
 
 /**
  * @param {Object} opts
- * @param {string} opts.sessionKey  - claude.ai sessionKey cookie value
- * @param {string} [opts.orgId]     - organization ID (resolved automatically if omitted)
- * @param {Function} opts.fetchFn   - async (url) => parsed JSON — caller-provided fetch
+ * @param {string} [opts.sessionKey] - claude.ai sessionKey cookie value
+ * @param {string} [opts.apiKey]     - Anthropic API key
+ * @param {string} [opts.orgId]      - organization ID (resolved automatically if omitted)
+ * @param {Function} [opts.fetchFn]    - async (url) => parsed JSON — caller-provided fetch
+ * @param {string} [opts.mode]       - 'pro' (default) or 'api'
  * @returns {Promise<import('../schema').QuotaSnapshot>}
  */
-async function fetchQuota({ sessionKey, orgId, fetchFn }) {
+async function fetchQuota({ sessionKey, apiKey, orgId, fetchFn, mode = 'pro' }) {
+  if (mode === 'api') {
+    if (!apiKey) throw new Error('Claude: apiKey is required for API mode');
+    // Basic check for API key validity
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'hi' }],
+      }),
+    });
+    if (res.status === 401) throw new Error('Claude: Invalid API Key');
+    // API doesn't currently expose a usage endpoint for personal keys
+    return makeSnapshot('claude', { short: null, raw: { status: res.status } });
+  }
+
   if (!sessionKey) throw new Error('Claude: sessionKey is required');
   if (!fetchFn) throw new Error('Claude: fetchFn is required');
 

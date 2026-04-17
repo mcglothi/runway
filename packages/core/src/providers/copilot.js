@@ -1,134 +1,119 @@
 /**
  * GitHub Copilot Enterprise provider
  *
- * Fetches enterprise Copilot usage metrics from GitHub's report API.
+ * Fetches daily Copilot usage metrics from GitHub's enterprise metrics API.
+ * Requires an enterprise admin or billing manager token.
  *
- * Auth:
- *   Fine-grained GitHub App token, installation token, or PAT with
- *   enterprise Copilot metrics read access.
+ * Auth: Classic PAT with manage_billing:copilot or read:enterprise scope
  *
  * Endpoints:
- *   GET https://api.github.com/enterprises/{enterprise}/copilot/metrics/reports/enterprise-28-day/latest
- *     → signed download links for the latest processed report
+ *   GET https://api.github.com/enterprises/{enterprise}/copilot/metrics/reports/enterprise-1-day
+ *     → manifest with download_links for today's report
+ *   Each download link → NDJSON or JSON report with daily totals
  *
- * Notes:
- *   - This is enterprise telemetry, not a personal remaining-quota API.
- *   - GitHub documents a data freshness lag of up to two full UTC days.
- *   - Download payloads may be JSON arrays or NDJSON exports depending on report shape.
+ * Utilization: active_users_today / seatCount if seatCount is configured,
+ *              otherwise null (raw counts still captured in raw field).
  */
 
 const { makeSnapshot } = require('../schema');
 
-const API_VERSION = '2026-03-10';
+const API_BASE    = 'https://api.github.com';
+const API_VERSION = '2022-11-28';
 
 /**
- * @param {Object} opts
- * @param {string} opts.token
- * @param {string} opts.enterprise
- * @param {Function} [opts.fetchFn]
+ * @param {Object}   opts
+ * @param {string}   opts.token       - GitHub PAT (manage_billing:copilot or read:enterprise)
+ * @param {string}   opts.enterprise  - enterprise slug (e.g. "ll-bean")
+ * @param {number}   [opts.seatCount] - total licensed seats; enables utilization %
  * @returns {Promise<import('../schema').QuotaSnapshot>}
  */
-async function fetchQuota({ token, enterprise, fetchFn = fetch }) {
-  if (!token) throw new Error('Copilot: token is required');
+async function fetchQuota({ token, enterprise, seatCount }) {
+  if (!token)      throw new Error('Copilot: token is required');
   if (!enterprise) throw new Error('Copilot: enterprise slug is required');
-  if (!fetchFn) throw new Error('Copilot: fetchFn is required');
 
-  const manifestUrl = `https://api.github.com/enterprises/${enterprise}/copilot/metrics/reports/enterprise-28-day/latest`;
-  const manifest = await fetchJson(fetchFn, manifestUrl, {
-    'Accept': 'application/vnd.github+json',
-    'Authorization': `Bearer ${token}`,
+  const headers = {
+    'Accept':              'application/vnd.github+json',
+    'Authorization':       `Bearer ${token}`,
     'X-GitHub-Api-Version': API_VERSION,
-  });
+  };
+
+  // Fetch today's report manifest — returns { download_links: [...] }
+  const manifestUrl = `${API_BASE}/enterprises/${enterprise}/copilot/metrics/reports/enterprise-1-day`;
+  const manifest = await fetchJson(manifestUrl, headers);
 
   const links = Array.isArray(manifest.download_links) ? manifest.download_links : [];
   if (links.length === 0) {
-    throw new Error('Copilot: metrics report did not include any download links');
+    throw new Error('Copilot: no download links in today\'s report manifest');
   }
 
-  const reportParts = await Promise.all(links.map((url) => fetchReportChunk(fetchFn, url)));
-  const reportRecords = reportParts.flat();
-  if (reportRecords.length === 0) {
-    throw new Error('Copilot: metrics report download was empty');
+  // Download and merge all report chunks
+  const chunks = await Promise.all(links.map(url => fetchReport(url)));
+  const records = chunks.flat();
+  if (records.length === 0) {
+    throw new Error('Copilot: report download was empty');
   }
 
-  const enterpriseRecord = reportRecords.find((record) => Array.isArray(record.day_totals)) || reportRecords[0];
-  const dayTotals = Array.isArray(enterpriseRecord.day_totals) ? enterpriseRecord.day_totals : [];
-  const latestDay = dayTotals[dayTotals.length - 1] || null;
-  const cliTotals = latestDay?.totals_by_cli || {};
-  const tokenUsage = cliTotals.token_usage || {};
+  // Prefer a record that has day_totals (enterprise aggregate)
+  const record = records.find(r => Array.isArray(r.day_totals)) ?? records[0];
+  const dayTotals = Array.isArray(record.day_totals) ? record.day_totals : [];
+  const today = dayTotals[dayTotals.length - 1] ?? null;
+
+  const activeUsers   = today?.daily_active_users ?? null;
+  const acceptances   = today?.code_acceptance_activity_count ?? null;
+  const suggestions   = today?.code_generation_activity_count ?? null;
+  const interactions  = today?.user_initiated_interaction_count ?? null;
+
+  // Utilization: active seats / total licensed seats (requires seatCount from settings)
+  const seats = seatCount && seatCount > 0 ? seatCount : null;
+  const utilization = seats != null && activeUsers != null
+    ? Math.min(100, (activeUsers / seats) * 100)
+    : null;
+
+  // Acceptance rate as a secondary signal (completions accepted vs generated)
+  const acceptanceRate = suggestions != null && suggestions > 0 && acceptances != null
+    ? Math.min(100, (acceptances / suggestions) * 100)
+    : null;
 
   return makeSnapshot('copilot', {
-    short: latestDay ? {
-      utilization: null,
-      resets_at: null,
-      runway_ms: null,
-      report_day: latestDay.day ?? enterpriseRecord.report_end_day ?? null,
-      daily_active_users: latestDay.daily_active_users ?? null,
-      daily_active_cli_users: latestDay.daily_active_cli_users ?? null,
-      weekly_active_users: latestDay.weekly_active_users ?? null,
-      monthly_active_users: latestDay.monthly_active_users ?? null,
-      monthly_active_chat_users: latestDay.monthly_active_chat_users ?? null,
-      monthly_active_agent_users: latestDay.monthly_active_agent_users ?? null,
-      code_acceptance_activity_count: latestDay.code_acceptance_activity_count ?? null,
-      code_generation_activity_count: latestDay.code_generation_activity_count ?? null,
-      user_initiated_interaction_count: latestDay.user_initiated_interaction_count ?? null,
-      cli_prompt_count: cliTotals.prompt_count ?? null,
-      cli_request_count: cliTotals.request_count ?? null,
-      cli_session_count: cliTotals.session_count ?? null,
-      prompt_tokens: tokenUsage.prompt_tokens_sum ?? null,
-      output_tokens: tokenUsage.output_tokens_sum ?? null,
-      avg_tokens_per_request: tokenUsage.avg_tokens_per_request ?? null,
-    } : null,
-    long: {
-      utilization: null,
-      resets_at: null,
-      runway_ms: null,
-      report_start_day: enterpriseRecord.report_start_day ?? null,
-      report_end_day: enterpriseRecord.report_end_day ?? null,
-      daily_points: dayTotals.length,
-      enterprise_id: enterpriseRecord.enterprise_id ?? null,
+    short: {
+      utilization,
+      resets_at:           null, // seat licenses don't have a quota reset
+      runway_ms:           null,
+      active_users:        activeUsers,
+      total_seats:         seats,
+      acceptance_rate:     acceptanceRate,
+      suggestions:         suggestions,
+      acceptances:         acceptances,
+      interactions:        interactions,
+      report_day:          today?.day ?? record.report_end_day ?? null,
     },
-    raw: {
-      manifest,
-      records: reportRecords,
-    },
+    raw: { manifest, records },
   });
 }
 
-async function fetchJson(fetchFn, url, headers) {
-  const res = await fetchFn(url, { headers });
+async function fetchJson(url, headers) {
+  const res = await fetch(url, { headers });
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Copilot: API error ${res.status}: ${body.substring(0, 200)}`);
+    throw new Error(`Copilot: API ${res.status}: ${body.substring(0, 200)}`);
   }
   return res.json();
 }
 
-async function fetchReportChunk(fetchFn, url) {
-  const res = await fetchFn(url);
+async function fetchReport(url) {
+  const res = await fetch(url);
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`Copilot: report download error ${res.status}: ${body.substring(0, 200)}`);
+    throw new Error(`Copilot: report download ${res.status}: ${body.substring(0, 200)}`);
   }
-
-  const text = await res.text();
-  return parseReportText(text);
-}
-
-function parseReportText(text) {
-  const trimmed = text.trim();
-  if (!trimmed) return [];
-
-  if (trimmed.startsWith('[') || trimmed.startsWith('{')) {
-    const parsed = JSON.parse(trimmed);
+  const text = (await res.text()).trim();
+  if (!text) return [];
+  if (text.startsWith('[') || text.startsWith('{')) {
+    const parsed = JSON.parse(text);
     return Array.isArray(parsed) ? parsed : [parsed];
   }
-
-  return trimmed
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => JSON.parse(line));
+  // NDJSON
+  return text.split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
 
 module.exports = { fetchQuota };

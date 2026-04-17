@@ -8,131 +8,178 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
-      background: #1c1c1e;
+      background: #111113;
       color: #e5e5ea;
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
       font-size: 13px;
       user-select: none;
       overflow: hidden;
-      border-radius: 10px;
+      border-radius: 12px;
     }
 
-    /* drag region at top */
     #header {
       -webkit-app-region: drag;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px 8px;
-      border-bottom: 1px solid #2c2c2e;
+      padding: 10px 14px 9px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: linear-gradient(180deg, #1a1a1d 0%, #111113 100%);
     }
 
     #header-left {
       display: flex;
       align-items: center;
-      gap: 6px;
-      font-weight: 600;
+      gap: 7px;
+      font-weight: 700;
       font-size: 13px;
       color: #fff;
+      letter-spacing: -0.2px;
+    }
+
+    .runway-mark {
+      width: 20px;
+      height: 20px;
+      background: linear-gradient(135deg, #0a84ff 0%, #6e40c9 100%);
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 800;
+      color: white;
+      flex-shrink: 0;
     }
 
     #header-right {
       -webkit-app-region: no-drag;
       display: flex;
-      gap: 4px;
+      gap: 2px;
     }
 
     .icon-btn {
       background: none;
       border: none;
-      color: #8e8e93;
+      color: #48484a;
       cursor: pointer;
-      font-size: 15px;
-      padding: 2px 5px;
-      border-radius: 4px;
+      font-size: 14px;
+      padding: 3px 6px;
+      border-radius: 5px;
       line-height: 1;
-      transition: color 0.15s;
+      transition: color 0.15s, background 0.15s;
     }
-    .icon-btn:hover { color: #e5e5ea; background: #2c2c2e; }
+    .icon-btn:hover { color: #e5e5ea; background: rgba(255,255,255,0.08); }
 
     #gauges {
-      padding: 10px 0 4px;
+      padding: 4px 0 2px;
     }
 
+    .provider-sep {
+      height: 1px;
+      background: rgba(255,255,255,0.05);
+      margin: 2px 14px;
+    }
+
+    /* icon | label | bar | pct | runway */
     .row {
       display: grid;
-      grid-template-columns: 70px 1fr 46px 64px;
+      grid-template-columns: 22px 62px 1fr 44px 56px;
       align-items: center;
-      gap: 8px;
+      gap: 7px;
       padding: 5px 14px;
-      transition: background 0.1s;
+      transition: background 0.12s;
     }
-    .row:hover { background: #2c2c2e; }
+    .row:hover { background: rgba(255,255,255,0.04); border-radius: 6px; }
+
+    .provider-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+    }
+
+    .agent-label {
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+      min-width: 0;
+    }
 
     .agent-name {
       font-size: 12px;
-      font-weight: 500;
-      color: #aeaeb2;
-      text-transform: capitalize;
+      font-weight: 600;
+      color: #e5e5ea;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .win-tag {
+      font-size: 10px;
+      font-weight: 400;
+      color: #48484a;
+      letter-spacing: 0.2px;
     }
 
     .bar-track {
-      height: 6px;
-      background: #3a3a3c;
-      border-radius: 3px;
+      height: 5px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 4px;
       overflow: hidden;
     }
 
     .bar-fill {
       height: 100%;
-      border-radius: 3px;
-      transition: width 0.4s ease;
+      border-radius: 4px;
+      transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .bar-fill.low    { background: #30d158; } /* green  <50%  */
-    .bar-fill.mid    { background: #ffd60a; } /* yellow 50-80% */
-    .bar-fill.high   { background: #ff453a; } /* red    >80%  */
-    .bar-fill.none   { background: #3a3a3c; width: 100% !important; }
+    .bar-fill.low  { background: linear-gradient(to right, #28b84e, #30d158); }
+    .bar-fill.mid  { background: linear-gradient(to right, #e5a800, #ffd60a); }
+    .bar-fill.high { background: linear-gradient(to right, #e0352b, #ff453a); }
+    .bar-fill.none { background: rgba(255,255,255,0.05); width: 100% !important; }
 
     .pct {
       font-size: 12px;
       font-weight: 600;
       text-align: right;
       color: #e5e5ea;
-      min-width: 32px;
-    }
-    .pct.dim { color: #48484a; }
-
-    .runway {
-      font-size: 11px;
-      color: #636366;
-      text-align: right;
       font-variant-numeric: tabular-nums;
     }
-    .runway.ok   { color: #30d158; }
-    .runway.warn { color: #ffd60a; }
-    .runway.crit { color: #ff453a; }
+    .pct.dim { color: #2c2c2e; }
+
+    .runway-col {
+      font-size: 11px;
+      color: #3a3a3c;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .runway-col.ok   { color: #30d158; }
+    .runway-col.warn { color: #ffd60a; }
+    .runway-col.crit { color: #ff453a; }
 
     #footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
       padding: 6px 14px 9px;
-      border-top: 1px solid #2c2c2e;
-      margin-top: 2px;
+      border-top: 1px solid rgba(255,255,255,0.05);
+      margin-top: 1px;
     }
 
     #last-updated {
       font-size: 10px;
-      color: #48484a;
+      color: #3a3a3c;
     }
 
     #not-configured {
-      padding: 16px 14px;
-      color: #636366;
+      padding: 24px 14px;
+      color: #48484a;
       font-size: 12px;
-      line-height: 1.5;
+      line-height: 1.6;
+      text-align: center;
     }
-
     #not-configured a {
       color: #0a84ff;
       cursor: pointer;
@@ -145,6 +192,7 @@
 
 <div id="header">
   <div id="header-left">
+    <div class="runway-mark">R</div>
     <span>Runway</span>
   </div>
   <div id="header-right">
@@ -162,15 +210,56 @@
 </div>
 
 <script>
-  // Preferred display order — only providers with snapshot data will be shown
   const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 
-  // ── Format helpers ──────────────────────────────────────────────────────────
+  // Provider display metadata with inline SVG icons
+  const PROVIDERS = {
+    claude: {
+      name: 'Claude',
+      // Anthropic A-mark in brand orange
+      icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 1.5L2.2 14.5H4.9L6 11.6H10L11.1 14.5H13.8L8 1.5ZM6.8 9.5L8 5.8L9.2 9.5H6.8Z" fill="#CF6A33"/>
+      </svg>`,
+    },
+    codex: {
+      name: 'Codex',
+      // OpenAI-style: concentric circles (simplified logo feel)
+      icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="6.5" stroke="#10A37F" stroke-width="1.3"/>
+        <circle cx="8" cy="8" r="3.2" fill="#10A37F"/>
+      </svg>`,
+    },
+    gemini: {
+      name: 'Gemini',
+      // 4-pointed star / sparkle — matches the Gemini logo shape
+      icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+        <path d="M8 1C8 1 8.65 5.8 11.2 8C8.65 10.2 8 15 8 15C8 15 7.35 10.2 4.8 8C7.35 5.8 8 1 8 1Z" fill="#4285F4"/>
+        <path d="M1 8C1 8 5.8 8.65 8 11.2C10.2 8.65 15 8 15 8C15 8 10.2 7.35 8 4.8C5.8 7.35 1 8 1 8Z" fill="#4285F4"/>
+      </svg>`,
+    },
+    copilot: {
+      name: 'Copilot',
+      // GitHub Copilot — circle with two "eye" highlights
+      icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="8" cy="8" r="6.8" fill="#8957E5"/>
+        <circle cx="5.7" cy="7.4" r="1.5" fill="white"/>
+        <circle cx="10.3" cy="7.4" r="1.5" fill="white"/>
+        <path d="M5.4 10.6Q8 12.2 10.6 10.6" stroke="white" stroke-width="1.1" stroke-linecap="round"/>
+      </svg>`,
+    },
+  };
+
+  // ── Format helpers ────────────────────────────────────────────────────────────
   function fmtRunway(ms) {
     if (ms == null) return null;
     const totalMin = Math.floor(ms / 60000);
     const h = Math.floor(totalMin / 60);
     const m = totalMin % 60;
+    if (h >= 48) {
+      const d = Math.floor(h / 24);
+      const rh = h % 24;
+      return `${d}d${String(rh).padStart(2, '0')}h`;
+    }
     return h > 0 ? `${h}h${String(m).padStart(2, '0')}m` : `${m}m`;
   }
 
@@ -188,59 +277,70 @@
     return 'low';
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────────
   function render(snapshots) {
     const gauges = document.getElementById('gauges');
-    const configured = Object.keys(snapshots).length > 0;
 
-    if (!configured) {
+    if (Object.keys(snapshots).length === 0) {
       gauges.innerHTML = `<div id="not-configured">
         No providers configured yet.<br>
-        <a id="open-settings-link">Open Settings</a> to add your API keys.
+        <a id="open-settings-link">Open Settings</a> to connect your accounts.
       </div>`;
       document.getElementById('open-settings-link')
         ?.addEventListener('click', () => window.runway.openSettings());
       return;
     }
 
-    // Render only providers that have snapshot data, in preferred order
     const activeAgents = PROVIDER_ORDER.filter(a => snapshots[a]);
-    const rows = activeAgents.map(agent => {
+    const html = activeAgents.map((agent, idx) => {
       const snap = snapshots[agent];
-      return renderRow(agent, snap.short ?? snap.long ?? null);
+      const sep = idx > 0 ? '<div class="provider-sep"></div>' : '';
+
+      if (snap.short && snap.long) {
+        return sep
+          + renderWindowRow(agent, '5 hr',  snap.short, false)
+          + renderWindowRow(agent, '7 day', snap.long,  true);
+      }
+      const tag = agent === 'gemini' ? 'Daily' : (snap.short ? 'Daily' : null);
+      return sep + renderWindowRow(agent, tag, snap.short ?? snap.long, false);
     }).join('');
 
-    gauges.innerHTML = rows;
+    gauges.innerHTML = html;
   }
 
-  function renderRow(agent, window) {
-    const label = agent.charAt(0).toUpperCase() + agent.slice(1);
-
-    if (!window) {
-      return `<div class="row">
-        <span class="agent-name">${label}</span>
-        <div class="bar-track"><div class="bar-fill none" style="width:100%"></div></div>
-        <span class="pct dim">—</span>
-        <span class="runway">n/a</span>
-      </div>`;
-    }
-
-    const pct = window.utilization;
+  function renderWindowRow(agent, windowTag, window, isSub) {
+    const prov = PROVIDERS[agent] ?? { name: agent.charAt(0).toUpperCase() + agent.slice(1), icon: '' };
+    const fillClass = barClass(window?.utilization);
+    const barW = window?.utilization != null ? Math.min(100, Math.round(window.utilization)) : 0;
+    const pct = window?.utilization;
     const pctDisplay = pct != null ? `${Math.round(pct)}%` : '—';
     const pctClass = pct != null ? '' : 'dim';
-    const barW = pct != null ? Math.min(100, Math.round(pct)) : 0;
-    const fillClass = barClass(pct);
-    const rwMs = window.runway_ms;
+    const rwMs = window?.runway_ms;
     const rwText = fmtRunway(rwMs) ?? '—';
     const rwClass = runwayClass(rwMs);
 
-    return `<div class="row">
-      <span class="agent-name">${label}</span>
-      <div class="bar-track">
-        <div class="bar-fill ${fillClass}" style="width:${barW}%"></div>
-      </div>
+    let iconHtml, labelHtml;
+    if (isSub) {
+      // Continuation row: no icon, indent the tag
+      iconHtml = '<div class="provider-icon"></div>';
+      labelHtml = `<div class="agent-label" style="padding-left:6px"><span class="win-tag">${windowTag}</span></div>`;
+    } else if (windowTag) {
+      iconHtml = `<div class="provider-icon">${prov.icon}</div>`;
+      labelHtml = `<div class="agent-label">
+        <span class="agent-name">${prov.name}</span>
+        <span class="win-tag">${windowTag}</span>
+      </div>`;
+    } else {
+      iconHtml = `<div class="provider-icon">${prov.icon}</div>`;
+      labelHtml = `<div class="agent-label"><span class="agent-name">${prov.name}</span></div>`;
+    }
+
+    return `<div class="row${isSub ? ' row-sub' : ''}">
+      ${iconHtml}
+      ${labelHtml}
+      <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${barW}%"></div></div>
       <span class="pct ${pctClass}">${pctDisplay}</span>
-      <span class="runway ${rwClass}">${rwText}</span>
+      <span class="runway-col ${rwClass}">${rwText}</span>
     </div>`;
   }
 
@@ -249,24 +349,23 @@
       'Updated ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  // ── Init ────────────────────────────────────────────────────────────────────
+  // ── Init ──────────────────────────────────────────────────────────────────────
   document.getElementById('btn-refresh').addEventListener('click', async () => {
-    document.getElementById('btn-refresh').style.opacity = '0.4';
+    const btn = document.getElementById('btn-refresh');
+    btn.style.opacity = '0.35';
     await window.runway.refresh();
-    document.getElementById('btn-refresh').style.opacity = '';
+    btn.style.opacity = '';
   });
 
   document.getElementById('btn-settings').addEventListener('click', () => {
     window.runway.openSettings();
   });
 
-  // Listen for pushed snapshots from main process
   window.runway.onSnapshots((data) => {
     render(data);
     updateTimestamp();
   });
 
-  // Load initial state
   window.runway.getSnapshots().then((data) => {
     render(data);
     if (Object.keys(data).length > 0) updateTimestamp();

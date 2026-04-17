@@ -4,6 +4,7 @@ const DESKTOP_URL = 'http://localhost:47821';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 let claudeSessionKey = null;
+let geminiCookies = [];
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 function showState(id) {
@@ -44,9 +45,24 @@ async function readClaudeCookie() {
   }
 }
 
+// ── Read Gemini cookies from browser ──────────────────────────────────────────
+async function readGeminiCookies() {
+  try {
+    const allCookies = await chrome.cookies.getAll({});
+    const filtered = allCookies.filter(c => 
+      c.domain.includes('google.com') || c.domain.includes('aistudio.google.com')
+    );
+    console.log(`[runway] found ${filtered.length} Gemini/Google cookies`);
+    return filtered;
+  } catch (err) {
+    console.error('[runway] failed to read Gemini cookies:', err);
+    return [];
+  }
+}
+
 // ── Sync session to Desktop ───────────────────────────────────────────────────
 async function syncSession() {
-  if (!claudeSessionKey) return;
+  if (!claudeSessionKey && geminiCookies.length === 0) return;
 
   const btn = document.getElementById('btn-sync');
   btn.disabled = true;
@@ -57,7 +73,10 @@ async function syncSession() {
     const res = await fetch(`${DESKTOP_URL}/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionKey: claudeSessionKey }),
+      body: JSON.stringify({
+        sessionKey: claudeSessionKey,
+        geminiCookies: geminiCookies,
+      }),
       signal: AbortSignal.timeout(5000),
     });
 
@@ -82,12 +101,14 @@ async function init() {
   setDot('loading');
   showState('state-loading');
 
-  const [isRunning, sessionKey] = await Promise.all([
+  const [isRunning, sessionKey, gCookies] = await Promise.all([
     checkDesktop(),
     readClaudeCookie(),
+    readGeminiCookies(),
   ]);
 
   claudeSessionKey = sessionKey;
+  geminiCookies = gCookies;
 
   if (!isRunning) {
     setDot('offline');
@@ -100,18 +121,39 @@ async function init() {
 
   // Update cookie status display
   const cookieEl = document.getElementById('claude-cookie-status');
+  const geminiEl = document.createElement('div');
+  geminiEl.id = 'gemini-cookie-status';
+  geminiEl.style.marginTop = '4px';
+
   const hintEl = document.getElementById('online-hint');
   const syncBtn = document.getElementById('btn-sync');
 
   if (sessionKey) {
-    cookieEl.textContent = 'session ready';
+    cookieEl.textContent = 'Claude: session ready';
     cookieEl.className = 'cookie-status found';
-    hintEl.textContent = 'Click Sync to push your session to Runway Desktop and refresh quota.';
+  } else {
+    cookieEl.textContent = 'Claude: not signed in';
+    cookieEl.className = 'cookie-status missing';
+  }
+
+  if (gCookies.length > 0) {
+    geminiEl.textContent = 'Gemini: session ready';
+    geminiEl.className = 'cookie-status found';
+  } else {
+    geminiEl.textContent = 'Gemini: not signed in';
+    geminiEl.className = 'cookie-status missing';
+  }
+
+  // Insert gemini status after claude
+  const oldGemini = document.getElementById('gemini-cookie-status');
+  if (oldGemini) oldGemini.remove();
+  cookieEl.parentNode.insertBefore(geminiEl, cookieEl.nextSibling);
+
+  if (sessionKey || gCookies.length > 0) {
+    hintEl.textContent = 'Click Sync to push your sessions to Runway Desktop and refresh quota.';
     syncBtn.disabled = false;
   } else {
-    cookieEl.textContent = 'not signed in';
-    cookieEl.className = 'cookie-status missing';
-    hintEl.textContent = 'Sign in to claude.ai in this browser first, then re-open this popup.';
+    hintEl.textContent = 'Sign in to Claude or AI Studio in this browser first.';
     syncBtn.disabled = true;
   }
 

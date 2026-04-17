@@ -125,6 +125,38 @@
     .hint a { color: #0a84ff; cursor: pointer; text-decoration: none; }
     .hint a:hover { text-decoration: underline; }
 
+    .radio-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .radio-option {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #aeaeb2;
+      margin: 0;
+    }
+
+    .radio-option input[type="radio"] {
+      margin-top: 1px;
+      accent-color: #0a84ff;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .radio-option code {
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 11px;
+      color: #636366;
+      background: #2c2c2e;
+      padding: 1px 4px;
+      border-radius: 3px;
+    }
+
     .row-actions {
       display: flex;
       align-items: center;
@@ -173,36 +205,74 @@
   </div>
   <div class="section-body" id="body-claude">
     <div class="field">
-      <div class="hint">
-        Auth is handled automatically — <a id="open-claude">sign in at claude.ai</a> once,
-        then use the Runway browser extension to sync your session.
+      <label>Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="claudeMode" value="pro" checked />
+          <span>Pro Plan — automated session sync</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="claudeMode" value="api" />
+          <span>API Key — explicit usage tracking</span>
+        </label>
+      </div>
+    </div>
+    <div id="claude-api-fields" class="hidden">
+      <div class="field">
+        <label for="claudeApiKey">API Key</label>
+        <input type="password" id="claudeApiKey" placeholder="sk-ant-…" autocomplete="off" />
+      </div>
+    </div>
+    <div id="claude-pro-fields">
+      <div class="field">
+        <div class="hint">
+          Auth is handled automatically — <a id="open-claude">sign in at claude.ai</a> once,
+          then use the Runway browser extension to sync your session.
+        </div>
       </div>
     </div>
   </div>
 </section>
 
-<!-- Codex / OpenAI -->
+<!-- Codex / ChatGPT -->
 <section>
   <div class="section-header">
-    <span class="section-title">Codex / OpenAI</span>
+    <span class="section-title">Codex / ChatGPT</span>
     <div class="toggle-wrap">
       <span class="toggle-label" id="label-codex"></span>
       <label class="toggle">
-        <input type="checkbox" id="codexEnabled" />
+        <input type="checkbox" id="codexEnabled" checked />
         <span class="toggle-track"></span>
       </label>
     </div>
   </div>
-  <div class="section-body hidden" id="body-codex">
+  <div class="section-body" id="body-codex">
     <div class="field">
-      <label for="codexApiKey">Admin API Key</label>
-      <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
-      <div class="hint">Requires org:read scope.</div>
+      <label>Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="codexMode" value="pro" checked />
+          <span>Pro Plan — automated session sync (ChatGPT)</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="codexMode" value="api" />
+          <span>API Key — explicit usage tracking (OpenAI)</span>
+        </label>
+      </div>
     </div>
-    <div class="field">
-      <label for="codexTokenLimit">Daily Token Limit</label>
-      <input type="text" id="codexTokenLimit" placeholder="e.g. 1000000" autocomplete="off" />
-      <div class="hint">Combined input + output tokens per day. Enables utilization % and runway estimate.</div>
+    <div id="codex-api-fields" class="hidden">
+      <div class="field">
+        <label for="codexApiKey">API Key</label>
+        <input type="password" id="codexApiKey" placeholder="sk-…" autocomplete="off" />
+      </div>
+    </div>
+    <div id="codex-pro-fields">
+      <div class="field">
+        <div class="hint">
+          Auth is handled automatically — <a id="open-chatgpt">sign in at chatgpt.com</a> once
+          and your Codex quota (5hr + 7-day windows) will be tracked automatically.
+        </div>
+      </div>
     </div>
   </div>
 </section>
@@ -221,9 +291,22 @@
   </div>
   <div class="section-body hidden" id="body-gemini">
     <div class="field">
+      <label>Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="geminiMode" value="pro" checked />
+          <span>Pro Plan — automated session sync (AI Studio)</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="geminiMode" value="api" />
+          <span>API Key — basic connectivity check</span>
+        </label>
+      </div>
+    </div>
+    <div class="field">
       <label for="geminiApiKey">API Key</label>
       <input type="password" id="geminiApiKey" placeholder="AIza…" autocomplete="off" />
-      <div class="hint">From <a id="open-aistudio">aistudio.google.com/app/apikey</a>. Quota tracking not yet available via AI Studio API — shows as connected only.</div>
+      <div class="hint">Auth is handled automatically via the Runway browser extension — or provide an API Key for basic connectivity. Daily quota (requests per day) is tracked automatically when synced.</div>
     </div>
   </div>
 </section>
@@ -242,13 +325,54 @@
   </div>
   <div class="section-body hidden" id="body-copilot">
     <div class="field">
+      <label>Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="copilotMode" value="api" checked />
+          <span>Enterprise — via metrics report API</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="copilotMode" value="pro" />
+          <span>Individual — (Coming soon)</span>
+        </label>
+      </div>
+    </div>
+    <div class="field">
       <label for="copilotToken">GitHub Token</label>
       <input type="password" id="copilotToken" placeholder="ghp_…" autocomplete="off" />
-      <div class="hint">Fine-grained PAT with Copilot metrics read access.</div>
+      <div class="hint">Classic PAT with <code>manage_billing:copilot</code> or <code>read:enterprise</code> scope. Must be an enterprise owner or billing manager.</div>
     </div>
     <div class="field">
       <label for="copilotEnterprise">Enterprise Slug</label>
       <input type="text" id="copilotEnterprise" placeholder="my-org-enterprise" autocomplete="off" />
+      <div class="hint">The URL slug for your enterprise (github.com/enterprises/<strong>slug</strong>).</div>
+    </div>
+    <div class="field">
+      <label for="copilotSeatCount">Total Licensed Seats</label>
+      <input type="text" id="copilotSeatCount" placeholder="e.g. 50" autocomplete="off" />
+      <div class="hint">Optional. Enables seat utilization % — active users today ÷ total seats.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Menu Bar -->
+<section>
+  <div class="section-header">
+    <span class="section-title">Menu Bar</span>
+  </div>
+  <div class="section-body">
+    <div class="field">
+      <label>Display Mode</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="trayMode" value="compact" checked />
+          <span>Compact — icon only, click to expand</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="trayMode" value="verbose" />
+          <span>Verbose — show utilization inline (e.g. <code>C:48%/12%  Cx:67%</code>)</span>
+        </label>
+      </div>
     </div>
   </div>
 </section>
@@ -277,9 +401,10 @@
   const PROVIDERS = ['claude', 'codex', 'gemini', 'copilot'];
 
   const CREDENTIAL_FIELDS = [
-    'codexApiKey', 'codexTokenLimit',
+    'claudeApiKey',
+    'codexApiKey',
     'geminiApiKey',
-    'copilotToken', 'copilotEnterprise',
+    'copilotToken', 'copilotEnterprise', 'copilotSeatCount',
     'aikbEventsDir',
   ];
 
@@ -294,11 +419,24 @@
     if (label) label.textContent = enabled ? 'On' : 'Off';
   }
 
+  // ── Toggle fields based on mode ───────────────────────────────────────────
+  function syncMode(provider) {
+    const mode = document.querySelector(`input[name="${provider}Mode"]:checked`)?.value;
+    const apiFields = document.getElementById(`${provider}-api-fields`);
+    const proFields = document.getElementById(`${provider}-pro-fields`);
+    if (apiFields) apiFields.classList.toggle('hidden', mode !== 'api');
+    if (proFields) proFields.classList.toggle('hidden', mode !== 'pro');
+  }
+
   PROVIDERS.forEach(p => {
     const checkbox = document.getElementById(`${p}Enabled`);
     if (!checkbox) return;
     checkbox.addEventListener('change', () => syncBody(p));
     syncBody(p); // initial state
+
+    const modes = document.querySelectorAll(`input[name="${p}Mode"]`);
+    modes.forEach(m => m.addEventListener('change', () => syncMode(p)));
+    syncMode(p);
   });
 
   // ── Status helper ──────────────────────────────────────────────────────────
@@ -322,14 +460,28 @@
       if (key in config) {
         checkbox.checked = config[key] !== false && config[key] !== 'false';
       }
-      // If no saved flag, default: claude always on; others on if credentials exist
       syncBody(provider);
+
+      const mode = config[`${provider}Mode`] || (provider === 'copilot' ? 'api' : 'pro');
+      const radio = document.querySelector(`input[name="${provider}Mode"][value="${mode}"]`);
+      if (radio) {
+        radio.checked = true;
+        syncMode(provider);
+      }
     }
+
+    // Tray mode
+    const trayMode = config.trayMode ?? 'compact';
+    const trayRadio = document.querySelector(`input[name="trayMode"][value="${trayMode}"]`);
+    if (trayRadio) trayRadio.checked = true;
   });
 
   // ── Link handlers ──────────────────────────────────────────────────────────
   document.getElementById('open-claude')?.addEventListener('click', () => {
     window.runway.openClaude();
+  });
+  document.getElementById('open-chatgpt')?.addEventListener('click', () => {
+    window.runway.openChatGptLogin();
   });
   document.getElementById('open-aistudio')?.addEventListener('click', () => {
     window.runway.openExternal('https://aistudio.google.com/app/apikey');
@@ -347,7 +499,12 @@
     for (const provider of PROVIDERS) {
       const checkbox = document.getElementById(`${provider}Enabled`);
       if (checkbox) data[`${provider}Enabled`] = checkbox.checked;
+      const modeRadio = document.querySelector(`input[name="${provider}Mode"]:checked`);
+      if (modeRadio) data[`${provider}Mode`] = modeRadio.value;
     }
+
+    const trayModeRadio = document.querySelector('input[name="trayMode"]:checked');
+    data.trayMode = trayModeRadio?.value ?? 'compact';
 
     try {
       await window.runway.saveConfig(data);

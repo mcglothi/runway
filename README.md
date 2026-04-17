@@ -50,11 +50,19 @@ Runway fixes that. It's a system tray widget and browser extension that tracks q
 ## Agents Supported
 
 | Agent | Auth | Quota Source | Status |
-|-------|------|-------------|--------|
-| Claude (Pro / Max) | Session cookie | `claude.ai/api` usage endpoint | ✅ Built |
-| Codex (Paid API) | API key | `api.openai.com/v1/organization/usage` | ✅ Built |
-| GitHub Copilot Enterprise | GitHub token | GitHub Copilot usage metrics report API | 🔨 Prototype |
-| Gemini (Free / OAuth) | OAuth personal | Local shim (no public API) | 🔨 Prototype |
+| :--- | :--- | :--- | :--- |
+| **Claude** | Session / API Key | Internal usage API / Anthropic API | ✅ Built |
+| **Codex** | Session / API Key | ChatGPT internal API / OpenAI API | ✅ Built |
+| **Gemini** | Session / API Key | AI Studio usage API / Google API | ✅ Built (Requests/Day) |
+| **Copilot** | GitHub PAT | GitHub Enterprise Metrics API | ✅ Built |
+
+## Latest Features (v0.1.0)
+- **Unified Mode Selection:** Every provider now supports a "Pro Plan" vs "API Key" toggle.
+  - **Pro Plan:** Rides your browser session (Claude.ai, ChatGPT, AI Studio) to track your subscription-based quotas.
+  - **API Key:** Uses standard developer keys for users paying by the token.
+- **Native Gemini Tracking:** First-of-its-kind "Requests Per Day" meter for Google AI Studio users.
+- **In-App Login:** Secure authentication windows for Claude and Gemini built directly into the tray app to ensure long-lived sessions.
+- **AIKB Integration:** Quota snapshots can be automatically pushed to your AI Knowledge Base event log for cross-agent awareness.
 
 ---
 

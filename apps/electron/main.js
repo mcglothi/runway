@@ -1,5 +1,8 @@
 'use strict';
 
+process.on('uncaughtException',    (err) => console.error('[runway] uncaughtException:', err));
+process.on('unhandledRejection',   (err) => console.error('[runway] unhandledRejection:', err));
+
 const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
@@ -23,7 +26,9 @@ function saveConfig(data) {
 // ── State ─────────────────────────────────────────────────────────────────────
 let tray = null;
 let popupWin = null;
-let claudeWin = null;   // hidden BrowserWindow — Claude Cloudflare bypass
+let claudeWin = null;    // hidden BrowserWindow — Claude Cloudflare bypass
+let chatgptWin = null;   // hidden BrowserWindow — ChatGPT/Codex session
+let geminiWin = null;    // hidden BrowserWindow — Google AI Studio session
 let settingsWin = null;
 let snapshots = {};     // latest QuotaSnapshot per agent
 let pollTimer = null;
@@ -31,11 +36,15 @@ let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 const POPUP_WIDTH = 340;
-const POPUP_ROW_HEIGHT = 32; // px per provider row
+const POPUP_ROW_HEIGHT = 30; // px per window row
 const POPUP_CHROME = 88;     // header + footer fixed height
 const LOCAL_SERVER_PORT = 47821;
 
+// Abbreviated labels used in the verbose tray title
+const TRAY_LABELS = { claude: 'C', codex: 'Cx', gemini: 'G', copilot: 'Cp' };
+
 let localServer = null;
+let trayIconEmpty = false; // true when no icon.png found — we use text fallback
 
 // ── Claude hidden window ──────────────────────────────────────────────────────
 function ensureClaudeWindow() {
@@ -77,17 +86,163 @@ async function claudeFetch(url) {
   `);
 }
 
+// ── ChatGPT hidden window ─────────────────────────────────────────────────────
+function ensureChatGptWindow() {
+  if (chatgptWin && !chatgptWin.isDestroyed()) return chatgptWin;
+
+  chatgptWin = new BrowserWindow({
+    width: 900,
+    height: 700,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      partition: 'persist:chatgpt', // separate session so cookies persist
+    },
+  });
+
+  chatgptWin.loadURL('https://chatgpt.com');
+  chatgptWin.on('closed', () => { chatgptWin = null; });
+  return chatgptWin;
+}
+
+// Execute a credentialed fetch from within the ChatGPT BrowserWindow.
+// First retrieves the Bearer JWT from NextAuth (/api/auth/session),
+// then calls the target URL with it.
+async function chatgptFetch(url) {
+  const win = ensureChatGptWindow();
+  if (win.webContents.isLoading()) {
+    await new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  }
+  return win.webContents.executeJavaScript(`
+    (async () => {
+      // Retrieve the Bearer access token from the NextAuth session endpoint
+      let token = null;
+      try {
+        const sess = await fetch('/api/auth/session', { credentials: 'include' }).then(r => r.json());
+        token = sess?.accessToken;
+      } catch (_) {}
+
+      const headers = {};
+      if (token) headers['Authorization'] = 'Bearer ' + token;
+
+      const r = await fetch(${JSON.stringify(url)}, { credentials: 'include', headers });
+      if (!r.ok) {
+        const body = await r.text().catch(() => '');
+        throw new Error('HTTP ' + r.status + ' ' + ${JSON.stringify(url)} + ': ' + body.substring(0, 200));
+      }
+      return r.json();
+    })()
+  `);
+}
+
+// ── Gemini hidden window ──────────────────────────────────────────────────────
+function ensureGeminiWindow() {
+  if (geminiWin && !geminiWin.isDestroyed()) return geminiWin;
+
+  geminiWin = new BrowserWindow({
+    width: 1000,
+    height: 800,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      partition: 'persist:gemini',
+    },
+  });
+
+  // Use a standard Chrome User-Agent to avoid "Insecure Browser" blocks
+  const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  geminiWin.webContents.setUserAgent(userAgent);
+
+  geminiWin.loadURL('https://aistudio.google.com/app/apikey');
+  geminiWin.on('closed', () => { geminiWin = null; });
+
+  // Monitor network traffic to find the real usage endpoint
+  const geminiSession = geminiWin.webContents.session;
+  geminiSession.webRequest.onBeforeRequest({ urls: ['https://aistudio.google.com/api/*'] }, (details, callback) => {
+    if (details.url.includes('usage') || details.url.includes('quota') || details.url.includes('metrics') || details.url.includes('billing')) {
+      console.log(`[runway:gemini:discovery] Intercepted internal API call: ${details.url}`);
+    }
+    callback({});
+  });
+
+  return geminiWin;
+}
+async function geminiFetch(url) {
+  const win = ensureGeminiWindow();
+  if (win.webContents.isLoading()) {
+    await new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  }
+
+  // Debug: Log cookies in this partition
+  const cookies = await win.webContents.session.cookies.get({});
+  console.log(`[runway:gemini] Partition has ${cookies.length} cookies:`, cookies.map(c => c.name).join(', '));
+
+  const currentUrl = win.getURL();
+  if (!currentUrl.includes('aistudio.google.com')) {
+    win.loadURL('https://aistudio.google.com/app/apikey');
+    await new Promise(resolve => win.webContents.once('did-finish-load', resolve));
+  }
+
+  const result = await win.webContents.executeJavaScript(`
+    (async () => {
+      try {
+        const p = '/api/usage';
+        const r = await fetch(p, { credentials: 'include' });
+        const body = await r.text();
+        const contentType = r.headers.get('content-type') || '';
+        
+        return { 
+          ok: r.ok, 
+          status: r.status, 
+          contentType, 
+          body: body.substring(0, 500),
+          isJson: contentType.includes('application/json')
+        };
+      } catch (err) {
+        return { error: err.message };
+      }
+    })()
+  `);
+
+  if (result.error) {
+    console.error(`[runway:gemini] Fetch failed:`, result.error);
+    throw new Error(result.error);
+  }
+
+  console.log(`[runway:gemini] Response (${result.status}):`, result.contentType);
+  
+  if (result.isJson) {
+    try {
+      const data = JSON.parse(result.body);
+      console.log(`[runway:gemini] usage data parsed successfully`);
+      return data;
+    } catch (e) {
+      console.error('[runway:gemini] JSON parse error:', e.message);
+    }
+  }
+
+  if (result.body.includes('Google Account') || result.body.includes('signin')) {
+    console.warn('[runway:gemini] usage API redirected to login page');
+    throw new Error('NOT_LOGGED_IN');
+  }
+
+  console.log(`[runway:gemini] unexpected response body:`, result.body.substring(0, 150));
+  throw new Error('No valid usage JSON found');
+}
+
 // ── Provider enable/disable ───────────────────────────────────────────────────
 // A provider is enabled unless the config explicitly sets it to false.
 // Claude defaults to enabled; others default to enabled only when credentials exist.
 function isEnabled(config, provider) {
   const key = `${provider}Enabled`;
   if (key in config) return config[key] !== false && config[key] !== 'false';
-  // If no explicit flag, enable if credentials are present (or always for claude)
+  // If no explicit flag, enable if credentials are present (or always for session-based providers)
   if (provider === 'claude') return true;
-  if (provider === 'codex')   return !!config.codexApiKey;
+  if (provider === 'codex')  return true;
+  if (provider === 'gemini') return true;
   if (provider === 'copilot') return !!(config.copilotToken && config.copilotEnterprise);
-  if (provider === 'gemini')  return !!config.geminiApiKey;
   return false;
 }
 
@@ -112,19 +267,70 @@ async function pollAll() {
   }
 
   resizePopup();
+  updateTrayTitle();
   pushToPopup();
   maybeWriteToAikb();
 }
 
 function resizePopup() {
   if (!popupWin || popupWin.isDestroyed()) return;
-  const count = Math.max(1, Object.keys(snapshots).length);
-  const h = POPUP_CHROME + count * POPUP_ROW_HEIGHT;
-  popupWin.setSize(POPUP_WIDTH, h);
+  let rows = 0;
+  for (const snap of Object.values(snapshots)) {
+    // Providers with both short + long windows (Claude) render two rows
+    rows += (snap.short && snap.long) ? 2 : 1;
+  }
+  rows = Math.max(1, rows);
+  popupWin.setSize(POPUP_WIDTH, POPUP_CHROME + rows * POPUP_ROW_HEIGHT);
+}
+
+// ── Tray title (verbose mode) ─────────────────────────────────────────────────
+function buildTrayTitle() {
+  const config = loadConfig();
+  if (config.trayMode !== 'verbose') {
+    // In compact mode with no icon, keep the text fallback so the tray stays visible
+    return trayIconEmpty ? 'RW' : '';
+  }
+
+  const parts = [];
+  for (const agent of ['claude', 'codex', 'gemini', 'copilot']) {
+    const snap = snapshots[agent];
+    if (!snap) continue;
+    const label = TRAY_LABELS[agent] ?? agent;
+
+    if (snap.short && snap.long) {
+      // Dual-window: show both (e.g. C:48%/12%)
+      const s = snap.short.utilization != null ? `${Math.round(snap.short.utilization)}%` : '–';
+      const l = snap.long.utilization  != null ? `${Math.round(snap.long.utilization)}%`  : '–';
+      parts.push(`${label}:${s}/${l}`);
+    } else {
+      const w = snap.short ?? snap.long;
+      const pct = w?.utilization != null ? `${Math.round(w.utilization)}%` : '–';
+      parts.push(`${label}:${pct}`);
+    }
+  }
+
+  return parts.join('  ');
+}
+
+function updateTrayTitle() {
+  if (!tray) return;
+  try {
+    tray.setTitle(buildTrayTitle());
+  } catch (e) {
+    console.error('[runway] tray.setTitle error:', e.message);
+  }
 }
 
 async function pollClaude(config) {
   const { claude } = require('@runway/core');
+  const mode = config.claudeMode || 'pro';
+
+  if (mode === 'api') {
+    return claude.fetchQuota({
+      apiKey: config.claudeApiKey,
+      mode: 'api',
+    });
+  }
 
   // Read sessionKey from the BrowserWindow's persisted cookie store
   const session = ensureClaudeWindow().webContents.session;
@@ -136,6 +342,7 @@ async function pollClaude(config) {
     sessionKey,
     orgId: claudeOrgId,
     fetchFn: claudeFetch,
+    mode: 'pro',
   });
 
   // Cache orgId to avoid redundant /organizations calls
@@ -145,25 +352,43 @@ async function pollClaude(config) {
 }
 
 async function pollCodex(config) {
-  if (!config.codexApiKey) return null;
   const { codex } = require('@runway/core');
-  const tokenLimit = config.codexTokenLimit ? Number(config.codexTokenLimit) : undefined;
-  return codex.fetchQuota({ apiKey: config.codexApiKey, tokenLimit });
+  const mode = config.codexMode || 'pro';
+
+  if (mode === 'api') {
+    return codex.fetchQuota({
+      apiKey: config.codexApiKey,
+      mode: 'api',
+    });
+  }
+
+  return codex.fetchQuota({
+    fetchFn: chatgptFetch,
+    mode: 'pro',
+  });
 }
 
 async function pollCopilot(config) {
   if (!config.copilotToken || !config.copilotEnterprise) return null;
   const { copilot } = require('@runway/core');
+  const seatCount = config.copilotSeatCount ? Number(config.copilotSeatCount) : undefined;
   return copilot.fetchQuota({
-    token: config.copilotToken,
+    token:      config.copilotToken,
     enterprise: config.copilotEnterprise,
+    seatCount,
+    mode:       config.copilotMode || 'api',
   });
 }
 
 async function pollGemini(config) {
-  if (!config.geminiApiKey) return null;
   const { gemini } = require('@runway/core');
-  return gemini.fetchQuota({ apiKey: config.geminiApiKey });
+  const mode = config.geminiMode || 'pro';
+
+  return gemini.fetchQuota({
+    apiKey: config.geminiApiKey,
+    fetchFn: mode === 'pro' ? geminiFetch : null,
+    mode,
+  });
 }
 
 function maybeWriteToAikb() {
@@ -253,7 +478,7 @@ function openSettings() {
 
   settingsWin = new BrowserWindow({
     width: 480,
-    height: 500,
+    height: 580,
     title: 'Runway — Settings',
     resizable: false,
     webPreferences: {
@@ -280,9 +505,10 @@ function createTray() {
   }
 
   tray = new Tray(icon);
+  trayIconEmpty = icon.isEmpty();
 
   // Fallback text label if no icon (visible on macOS menu bar)
-  if (icon.isEmpty()) tray.setTitle('RW');
+  if (trayIconEmpty) tray.setTitle('RW');
 
   tray.setToolTip('Runway — AI quota tracker');
 
@@ -294,6 +520,19 @@ function createTray() {
     const menu = Menu.buildFromTemplate([
       { label: 'Refresh Now', click: () => pollAll() },
       { label: 'Settings…', click: openSettings },
+      { type: 'separator' },
+      { label: 'Login to Claude…', click: () => shell.openExternal('https://claude.ai') },
+      { label: 'Login to ChatGPT…', click: () => {
+        const win = ensureChatGptWindow();
+        win.show();
+        win.focus();
+      } },
+      { label: 'Login to AI Studio…', click: () => {
+        const win = ensureGeminiWindow();
+        win.show();
+        win.focus();
+        win.once('closed', () => pollAll());
+      } },
       { type: 'separator' },
       { label: 'Quit Runway', click: () => app.quit() },
     ]);
@@ -315,6 +554,20 @@ ipcMain.handle('open-settings', openSettings);
 ipcMain.handle('open-claude',    () => shell.openExternal('https://claude.ai'));
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.handle('refresh', () => pollAll());
+ipcMain.handle('open-chatgpt-login', () => {
+  const win = ensureChatGptWindow();
+  win.show();
+  win.focus();
+  // Re-poll once the user closes the login window
+  win.once('closed', () => pollAll());
+});
+ipcMain.handle('open-gemini-login', () => {
+  const win = ensureGeminiWindow();
+  win.show();
+  win.focus();
+  // Ensure it's not hidden when we want to log in
+  win.setMenuBarVisibility(true);
+});
 
 // ── Local HTTP server (extension bridge) ──────────────────────────────────────
 //
@@ -350,27 +603,71 @@ function startLocalServer() {
       req.on('data', chunk => { body += chunk.toString(); });
       req.on('end', async () => {
         try {
-          const { sessionKey } = JSON.parse(body);
-          if (!sessionKey || typeof sessionKey !== 'string') {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'sessionKey required' }));
-            return;
+          const { sessionKey, geminiCookies } = JSON.parse(body);
+
+          // 1. Claude sync
+          if (sessionKey && typeof sessionKey === 'string') {
+            const claudeSession = session.fromPartition('persist:claude');
+            await claudeSession.cookies.set({
+              url: 'https://claude.ai',
+              name: 'sessionKey',
+              value: sessionKey,
+              httpOnly: true,
+              secure: true,
+              expirationDate: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
+            });
+            claudeOrgId = null;
           }
 
-          // Inject the cookie into the Claude partition so the hidden
-          // BrowserWindow picks it up on the next poll
-          const claudeSession = session.fromPartition('persist:claude');
-          await claudeSession.cookies.set({
-            url: 'https://claude.ai',
-            name: 'sessionKey',
-            value: sessionKey,
-            httpOnly: true,
-            secure: true,
-            expirationDate: Math.floor(Date.now() / 1000) + 365 * 24 * 3600,
-          });
+          // 2. Gemini sync
+          if (geminiCookies && Array.isArray(geminiCookies)) {
+            console.log(`[runway] syncing ${geminiCookies.length} Gemini cookies`);
+            const geminiSession = session.fromPartition('persist:gemini');
+            for (const c of geminiCookies) {
+              // Construct a valid URL for the cookie based on its domain
+              let domain = c.domain;
+              if (domain.startsWith('.')) domain = domain.substring(1);
+              const url = `https://${domain}${c.path}`;
 
-          claudeOrgId = null; // clear cached org ID — may have changed
-          pollAll();          // re-poll immediately with fresh session
+              const cookieObj = {
+                url: url,
+                name: c.name,
+                value: c.value,
+                path: c.path,
+                secure: c.secure,
+                httpOnly: c.httpOnly,
+                expirationDate: c.expirationDate,
+              };
+
+              // Security rules for prefixed cookies:
+              // __Host- must NOT have a domain, must be secure, and path must be /
+              if (c.name.startsWith('__Host-')) {
+                cookieObj.url = `https://${domain}/`;
+                cookieObj.path = '/';
+                cookieObj.secure = true;
+                delete cookieObj.domain;
+              } else {
+                cookieObj.domain = c.domain;
+              }
+
+              // __Secure- must be secure
+              if (c.name.startsWith('__Secure-')) {
+                cookieObj.secure = true;
+              }
+
+              try {
+                await geminiSession.cookies.set(cookieObj);
+              } catch (err) {
+                console.error(`[runway] failed to set cookie ${c.name}:`, err.message);
+              }
+            }
+            // Force the window to reload or navigate to ensure cookies take effect
+            if (geminiWin && !geminiWin.isDestroyed()) {
+              geminiWin.loadURL('https://aistudio.google.com/app/apikey');
+            }
+          }
+
+          pollAll(); // re-poll immediately with fresh session
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ ok: true }));
@@ -416,6 +713,8 @@ app.whenReady().then(() => {
 
   createTray();
   ensureClaudeWindow();
+  ensureChatGptWindow();
+  ensureGeminiWindow();
   startLocalServer();
 
   // Initial poll then schedule
