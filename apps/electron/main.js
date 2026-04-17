@@ -230,9 +230,10 @@ function positionPopupNearTray() {
   let y = Math.round(bounds.y + bounds.height + 4);
 
   // Keep within screen bounds
+  const popupH = popupWin.getBounds().height;
   x = Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - POPUP_WIDTH));
-  if (y + POPUP_HEIGHT > workArea.y + workArea.height) {
-    y = bounds.y - POPUP_HEIGHT - 4; // flip above if too low
+  if (y + popupH > workArea.y + workArea.height) {
+    y = bounds.y - popupH - 4; // flip above if too low
   }
 
   popupWin.setPosition(Math.round(x), Math.round(y));
