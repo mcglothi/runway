@@ -67,7 +67,25 @@
       font-size: 12px;
       color: #636366;
       line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    #state-offline .dev-hint {
+      font-size: 11px;
+      color: #48484a;
       margin-bottom: 14px;
+    }
+    #state-offline code {
+      font-family: 'SF Mono', 'Menlo', monospace;
+      font-size: 10px;
+      color: #636366;
+    }
+    .offline-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .offline-actions button {
+      flex: 1;
+      margin-top: 0;
     }
 
     /* ── Online ── */
@@ -111,7 +129,8 @@
     button:active  { opacity: 0.7; }
     button:disabled { opacity: 0.4; cursor: default; }
 
-    #btn-launch { background: #2c2c2e; color: #aeaeb2; }
+    #btn-launch { background: #2c2c2e; color: #636366; }
+    #btn-check  { background: #2c2c2e; color: #aeaeb2; }
     #btn-sync   { background: #0a84ff; color: #fff; }
 
     #feedback {
@@ -147,8 +166,12 @@
 
   <div id="state-offline" class="state">
     <h2>Desktop app not running</h2>
-    <p>Runway Desktop needs to be open to receive session data and track your quota.</p>
-    <button id="btn-launch">Launch Runway Desktop</button>
+    <p>Start Runway Desktop, then this popup will update automatically.</p>
+    <p class="dev-hint">Running from source? Start it with:<br><code>cd apps/electron &amp;&amp; npm start</code></p>
+    <div class="offline-actions">
+      <button id="btn-launch">Launch (installed app)</button>
+      <button id="btn-check">Check again</button>
+    </div>
   </div>
 
   <div id="state-online" class="state">

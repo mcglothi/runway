@@ -92,6 +92,7 @@ async function init() {
   if (!isRunning) {
     setDot('offline');
     showState('state-offline');
+    startPollingForDesktop();
     return;
   }
 
@@ -117,13 +118,29 @@ async function init() {
   showState('state-online');
 }
 
+// ── Poll for desktop coming online (used while offline state is showing) ──────
+let offlinePollTimer = null;
+
+function startPollingForDesktop() {
+  if (offlinePollTimer) return;
+  offlinePollTimer = setInterval(async () => {
+    const running = await checkDesktop();
+    if (running) {
+      clearInterval(offlinePollTimer);
+      offlinePollTimer = null;
+      init(); // re-run full init now that desktop is up
+    }
+  }, 2000);
+}
+
 // ── Event listeners ───────────────────────────────────────────────────────────
 document.getElementById('btn-launch').addEventListener('click', () => {
-  // Opens the runway:// protocol URL — the OS will launch the Desktop app
-  // if it's registered, or do nothing if it's not installed yet.
-  chrome.tabs.create({ url: 'runway://wake' });
-  window.close();
+  // This only works when the app is packaged and installed (runway:// is registered).
+  // In development, start the app from your terminal: cd apps/electron && npm start
+  window.open('runway://wake', '_self');
 });
+
+document.getElementById('btn-check').addEventListener('click', init);
 
 document.getElementById('btn-sync').addEventListener('click', syncSession);
 
