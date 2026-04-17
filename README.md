@@ -172,7 +172,8 @@ When an agent (like Claude Code or Gemini CLI) is connected to an AIKB-synced Ru
 
 1.  **Intelligent Summarization:** If Runway reports only 10% headroom left in the 5-hour window, the agent can proactively trigger a `/compress` or context offload to save tokens.
 2.  **Model Routing:** An orchestrator can see that Gemini has 90% "Daily" runway while Claude is at 5% and automatically route the next large implementation task to Gemini.
-3.  **Cost Guardrails:** Agents can determine if a task is too "expensive" for the remaining window and ask the human if they should proceed or switch to a local model (Ollama).
+3.  **Local LLM Offloading (AI Hub):** Agents can determine if a task is too "expensive" for the remaining window and automatically offload the work to a local model (via **Ollama** or **AI Hub**) to preserve premium quota for tasks that require frontier-model reasoning.
+4.  **Cost Guardrails:** Stop agents from starting "runaway" loops that would exhaust your weekly or daily caps.
 
 ### Configuration
 Enable the AIKB event stream in Settings or `.env`:
