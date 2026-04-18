@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Runway — AI Quota Burn Tracker</title>
+<meta name="description" content="Real-time gas gauge for Claude, Codex, Gemini, and Copilot. Know your AI quota runway before you hit the wall.">
+<style>
+:root {
+  --bg:#08090d; --surface:#0f1117; --card:#141720; --border:#1e2130;
+  --border2:#252a3a; --text:#d4d8e8; --muted:#5a607a; --dim:#3a4060;
+  --blue:#4d9fff; --blue-d:#0d1e38; --green:#3dd68c; --green-d:#0f2e20;
+  --amber:#f0b429; --amber-d:#2a1f00; --red:#f25c54; --purple:#a78bfa; --purple-d:#1e1535;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:15px;line-height:1.6}
+a{color:var(--blue);text-decoration:none}
+a:hover{text-decoration:underline}
+
+nav{position:sticky;top:0;z-index:100;background:rgba(8,9,13,0.88);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 2rem;height:56px}
+.nav-back{font-size:0.82rem;color:var(--muted)}
+.nav-back:hover{color:var(--text);text-decoration:none}
+.nav-brand{font-size:1rem;font-weight:800;letter-spacing:-0.01em;background:linear-gradient(135deg,#f0b429 0%,#f87239 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.nav-links{display:flex;gap:1.25rem}
+.nav-links a{font-size:0.82rem;color:var(--muted)}
+.nav-links a:hover{color:var(--text);text-decoration:none}
+
+.hero{max-width:720px;margin:0 auto;padding:5.5rem 2rem 3.5rem;text-align:center}
+.hero-eyebrow{display:inline-flex;align-items:center;gap:0.5rem;margin-bottom:1.25rem;font-size:0.72rem;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:var(--amber);background:var(--amber-d);border:1px solid rgba(240,180,41,0.2);padding:0.3rem 0.85rem;border-radius:20px}
+.hero h1{font-size:clamp(2.2rem,5vw,3.5rem);font-weight:800;letter-spacing:-0.03em;line-height:1.1;color:#fff;margin-bottom:1.25rem}
+.hero h1 em{font-style:normal;background:linear-gradient(135deg,#f0b429,#f87239);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{font-size:1.05rem;color:var(--muted);max-width:500px;margin:0 auto 2.25rem;line-height:1.7}
+.hero-actions{display:flex;gap:0.75rem;justify-content:center;flex-wrap:wrap}
+.btn-primary{display:inline-block;padding:0.65rem 1.4rem;background:var(--amber);color:#000;font-size:0.88rem;font-weight:700;border-radius:7px;transition:opacity .15s}
+.btn-primary:hover{opacity:.85;text-decoration:none;color:#000}
+.btn-ghost{display:inline-block;padding:0.65rem 1.4rem;background:none;color:var(--text);font-size:0.88rem;font-weight:600;border-radius:7px;border:1px solid var(--border2);transition:border-color .15s}
+.btn-ghost:hover{border-color:var(--amber);color:var(--amber);text-decoration:none}
+
+/* Gauge mock */
+.gauge-demo{max-width:680px;margin:0 auto 0;padding:0 2rem 3.5rem}
+.gauge-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:1.5rem}
+.gauge-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:0.7rem}
+.gauge-service{display:flex;align-items:center;gap:0.6rem;font-size:0.85rem;font-weight:600}
+.gauge-dot{width:8px;height:8px;border-radius:50%}
+.gauge-meta{font-size:0.72rem;color:var(--muted);font-family:monospace;text-align:right}
+.gauge-bar-wrap{height:5px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:1.1rem}
+.gauge-bar{height:100%;border-radius:3px}
+
+section{max-width:900px;margin:0 auto;padding:3.5rem 2rem}
+.section-label{font-size:0.7rem;font-weight:700;letter-spacing:0.16em;text-transform:uppercase;color:var(--muted);margin-bottom:0.4rem}
+.section-title{font-size:1.5rem;font-weight:800;color:#fff;letter-spacing:-0.02em;margin-bottom:0.65rem}
+.section-sub{font-size:0.9rem;color:var(--muted);line-height:1.65;margin-bottom:2rem;max-width:540px}
+
+.feature-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:0.75rem}
+.feature-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.2rem}
+.feature-icon{font-size:1.25rem;margin-bottom:0.6rem}
+.feature-name{font-size:0.9rem;font-weight:700;color:#fff;margin-bottom:0.3rem}
+.feature-desc{font-size:0.8rem;color:var(--muted);line-height:1.5}
+
+.services-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:0.75rem}
+.service-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1rem;text-align:center}
+.service-name{font-size:0.88rem;font-weight:700;color:#fff;margin-bottom:0.25rem}
+.service-detail{font-size:0.75rem;color:var(--muted)}
+
+.install-block{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.install-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface)}
+.install-tab{padding:0.55rem 1rem;font-size:0.78rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
+.install-tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+.install-panel{display:none;padding:1.1rem 1.25rem}
+.install-panel.active{display:block}
+.install-cmd{font-family:monospace;font-size:0.83rem;color:var(--green);white-space:pre;overflow-x:auto}
+.install-meta{display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem}
+.install-note{font-size:0.72rem;color:var(--dim)}
+.copy-btn{padding:0.35rem 0.7rem;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--muted);font-size:0.72rem;cursor:pointer;transition:border-color .12s,color .12s}
+.copy-btn:hover{border-color:var(--amber);color:var(--amber)}
+.copy-btn.copied{border-color:var(--green);color:var(--green)}
+
+.divider{border:none;border-top:1px solid var(--border)}
+footer{border-top:1px solid var(--border);padding:2rem;text-align:center;font-size:0.72rem;color:var(--dim);line-height:2}
+footer a{color:var(--dim)}
+footer a:hover{color:var(--muted)}
+
+@media(max-width:600px){nav{padding:0 1rem}.hero,.gauge-demo{padding-left:1.25rem;padding-right:1.25rem}section{padding:2.5rem 1.25rem}}
+</style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-back" href="https://mcglothi.github.io">← All projects</a>
+  <span class="nav-brand">Runway</span>
+  <div class="nav-links">
+    <a href="#install">Install</a>
+    <a href="#features">Features</a>
+    <a href="https://github.com/mcglothi/runway" target="_blank">GitHub</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <span class="hero-eyebrow">📊 macOS · Menu bar · Always visible</span>
+  <h1>Know your <em>runway</em><br>before you hit the wall</h1>
+  <p class="hero-sub">
+    Real-time quota burn tracker for Claude, Codex, Gemini, and Copilot.
+    Lives in your menu bar. Shows current burn rate and time-to-limit
+    across all your AI services at a glance.
+  </p>
+  <div class="hero-actions">
+    <a href="#install" class="btn-primary">Download</a>
+    <a href="https://github.com/mcglothi/runway" class="btn-ghost" target="_blank">GitHub →</a>
+  </div>
+</div>
+
+<!-- Live gauge demo -->
+<div class="gauge-demo">
+  <div class="gauge-card">
+    <div class="gauge-row">
+      <div class="gauge-service"><span class="gauge-dot" style="background:#f0b429"></span>Claude Pro</div>
+      <div class="gauge-meta">~2h 14m remaining · 68% used</div>
+    </div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:68%;background:linear-gradient(90deg,#f0b429,#f87239)"></div></div>
+
+    <div class="gauge-row">
+      <div class="gauge-service"><span class="gauge-dot" style="background:#3dd68c"></span>GitHub Copilot</div>
+      <div class="gauge-meta">~5h 40m remaining · 29% used</div>
+    </div>
+    <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:29%;background:linear-gradient(90deg,#3dd68c,#4d9fff)"></div></div>
+
+    <div class="gauge-row">
+      <div class="gauge-service"><span class="gauge-dot" style="background:#4d9fff"></span>Codex / ChatGPT</div>
+      <div class="gauge-meta">~4h 02m remaining · 44% used</div>
+    </div>
+    <div class="gauge-bar-wrap" style="margin-bottom:0"><div class="gauge-bar" style="width:44%;background:linear-gradient(90deg,#4d9fff,#a78bfa)"></div></div>
+  </div>
+</div>
+
+<hr class="divider">
+
+<section id="features">
+  <div class="section-label">Features</div>
+  <div class="section-title">What you get</div>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">⏱</div>
+      <div class="feature-name">Burn rate + time-to-limit</div>
+      <div class="feature-desc">Not just current usage — projects forward based on your actual burn rate to tell you when you'll hit the ceiling.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📌</div>
+      <div class="feature-name">Always-visible menu bar</div>
+      <div class="feature-desc">Electron menu-bar app. No browser tab to forget. Quota state visible the moment you glance up.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔄</div>
+      <div class="feature-name">Multi-service</div>
+      <div class="feature-desc">Claude, Codex/ChatGPT, Gemini, and GitHub Copilot tracked simultaneously in one panel.</div>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🧠</div>
+      <div class="feature-name">AIKB integration</div>
+      <div class="feature-desc">Pushes quota snapshots into the AI Knowledge Base runtime event log for cross-session tracking and trend analysis.</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section>
+  <div class="section-label">Supported services</div>
+  <div class="section-title">What Runway tracks</div>
+  <div class="services-grid">
+    <div class="service-card">
+      <div class="service-name">Claude</div>
+      <div class="service-detail">Anthropic Pro / Team</div>
+    </div>
+    <div class="service-card">
+      <div class="service-name">Codex / ChatGPT</div>
+      <div class="service-detail">OpenAI Plus / Team</div>
+    </div>
+    <div class="service-card">
+      <div class="service-name">Gemini</div>
+      <div class="service-detail">Google One AI</div>
+    </div>
+    <div class="service-card">
+      <div class="service-name">GitHub Copilot</div>
+      <div class="service-detail">Individual / Business</div>
+    </div>
+  </div>
+</section>
+
+<hr class="divider">
+
+<section id="install">
+  <div class="section-label">Install</div>
+  <div class="section-title">Get Runway</div>
+  <p class="section-sub">macOS only. Requires Node.js for building from source, or download the pre-built release.</p>
+  <div class="install-block">
+    <div class="install-tabs">
+      <button class="install-tab active" onclick="showTab('dmg',this)">Release .dmg</button>
+      <button class="install-tab" onclick="showTab('homebrew',this)">Homebrew</button>
+      <button class="install-tab" onclick="showTab('source',this)">From source</button>
+    </div>
+    <div class="install-panel active" id="tab-dmg">
+      <div class="install-cmd">Download runway-&lt;version&gt;-arm64.dmg from Releases</div>
+      <div class="install-meta">
+        <span class="install-note">Universal binary — Apple Silicon and Intel</span>
+        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
+      </div>
+    </div>
+    <div class="install-panel" id="tab-homebrew">
+      <div class="install-cmd" id="cmd-brew">brew install --cask mcglothi/tap/runway</div>
+      <div class="install-meta">
+        <span class="install-note">Homebrew cask — updates via brew upgrade</span>
+        <button class="copy-btn" onclick="copyCmd('cmd-brew',this)">Copy</button>
+      </div>
+    </div>
+    <div class="install-panel" id="tab-source">
+      <div class="install-cmd" id="cmd-source">git clone https://github.com/mcglothi/runway.git
+cd runway && npm install && npm run build</div>
+      <div class="install-meta">
+        <span class="install-note">Requires Node.js 18+</span>
+        <button class="copy-btn" onclick="copyCmd('cmd-source',this)">Copy</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div>Part of the <a href="https://mcglothi.github.io">AI Ops Toolkit</a> &nbsp;·&nbsp; <a href="https://github.com/mcglothi/runway" target="_blank">github.com/mcglothi/runway</a> &nbsp;·&nbsp; MIT License</div>
+</footer>
+
+<script>
+function showTab(id,btn){document.querySelectorAll('.install-panel').forEach(p=>p.classList.remove('active'));document.querySelectorAll('.install-tab').forEach(b=>b.classList.remove('active'));document.getElementById('tab-'+id).classList.add('active');btn.classList.add('active')}
+function copyCmd(id,btn){navigator.clipboard.writeText(document.getElementById(id).textContent).then(()=>{btn.textContent='Copied!';btn.classList.add('copied');setTimeout(()=>{btn.textContent='Copy';btn.classList.remove('copied')},2000)})}
+</script>
+</body>
+</html>
