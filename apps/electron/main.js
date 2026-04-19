@@ -3,7 +3,7 @@
 process.on('uncaughtException',    (err) => console.error('[runway] uncaughtException:', err));
 process.on('unhandledRejection',   (err) => console.error('[runway] unhandledRejection:', err));
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -33,6 +33,7 @@ let geminiWin = null;    // hidden BrowserWindow — Google AI Studio session
 let settingsWin = null;
 let snapshots = {};     // latest QuotaSnapshot per agent
 let pollTimer = null;
+let isPolling = false;  // Guard against overlapping polls
 let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -56,21 +57,51 @@ function svgToDataUrl(svg) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
-function createGeneratedTrayIcon() {
+function createGeneratedTrayIcon(isTemplate = false) {
   const size = process.platform === 'win32' ? 32 : 18;
+  const strokeColor = isTemplate ? '#000000' : 'url(#icon-grad)';
+  
+  // For template images, we MUST NOT have any background rect or fill.
+  // Just the paths that will be tinted by macOS.
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18">
-      <rect x="1" y="1" width="16" height="16" rx="4" fill="#111827" />
-      <path d="M4 12.5h2.2L8.5 5.5H10l2.1 7h1.9" fill="none" stroke="#f59e0b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="12.8" cy="12.4" r="1.3" fill="#60a5fa" />
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18" fill="none">
+      <defs>
+        <linearGradient id="icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00C2FF" />
+          <stop offset="100%" stop-color="#6E40C9" />
+        </linearGradient>
+      </defs>
+      ${!isTemplate ? `<rect x="1" y="1" width="16" height="16" rx="4.5" fill="#0F172A" />` : ''}
+      <path d="M4.5 13.5l3-9 3 9" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 9.5h2" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round"/>
+      ${!isTemplate ? `
+      <circle cx="13.5" cy="4.5" r="1.2" fill="#00C2FF">
+        <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+      </circle>` : ''}
     </svg>
   `;
   let icon = nativeImage.createFromDataURL(svgToDataUrl(svg));
-  if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
+  if (process.platform === 'darwin') {
+    icon = icon.resize({ width: 16, height: 16 });
+    if (isTemplate) icon.setTemplateImage(true);
+  }
   return icon;
 }
 
 function loadTrayIcon() {
+  const config = loadConfig();
+  
+  // In verbose mode, the user wants NO icon, just the text
+  if (config.trayMode === 'verbose') {
+    return nativeImage.createEmpty();
+  }
+
+  // Always use the generated template icon for macOS menubar to ensure
+  // it looks "modern" and matches the brand mark without being a white box.
+  if (process.platform === 'darwin') {
+    return createGeneratedTrayIcon(true);
+  }
+
   const candidates = [
     path.join(__dirname, 'build-assets', 'icon.png'),
     path.join(__dirname, 'icon.png'),
@@ -78,12 +109,10 @@ function loadTrayIcon() {
   for (const iconPath of candidates) {
     if (!fs.existsSync(iconPath)) continue;
     let icon = nativeImage.createFromPath(iconPath);
-    if (!icon.isEmpty()) {
-      if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
-      return icon;
-    }
+    if (!icon.isEmpty()) return icon;
   }
-  return createGeneratedTrayIcon();
+  
+  return createGeneratedTrayIcon(false);
 }
 
 function hasCustomProtocolArg(argv = []) {
@@ -193,6 +222,7 @@ function ensureClaudeWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:claude', // dedicated session so cookies persist
+      backgroundThrottling: true,
     },
   });
 
@@ -233,6 +263,7 @@ function ensureChatGptWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:chatgpt', // separate session so cookies persist
+      backgroundThrottling: true,
     },
   });
 
@@ -279,15 +310,19 @@ function ensureGeminiWindow() {
     width: 1000,
     height: 800,
     show: false,
+    title: 'Login to Google AI Studio',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:gemini',
+      backgroundThrottling: true,
+      // Google often blocks windows that look like automation
+      devTools: true, 
     },
   });
 
-  // Use a standard Chrome User-Agent to avoid "Insecure Browser" blocks
-  const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  // Modern Chrome User-Agent on macOS - crucial for Google login trust
+  const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
   geminiWin.webContents.setUserAgent(userAgent);
 
   geminiWin.loadURL('https://aistudio.google.com/app/usage');
@@ -295,46 +330,56 @@ function ensureGeminiWindow() {
 
   // Monitor network traffic using Debugger to capture response bodies
   const view = geminiWin.webContents;
-  try {
-    if (!view.debugger.isAttached()) {
-      view.debugger.attach('1.3');
-    }
-    
-    view.debugger.on('message', async (event, method, params) => {
-      if (method === 'Network.responseReceived') {
-        const url = params.response.url;
-        // Intercept any JSON responses that look like usage data
-        if (url.includes('/api/') && (url.includes('usage') || url.includes('quota') || url.includes('models'))) {
-          // Allow some time for the response body to be ready in CDP
-          setTimeout(async () => {
-            try {
-              if (geminiWin && !geminiWin.isDestroyed()) {
-                const { body } = await view.debugger.sendCommand('Network.getResponseBody', { 
-                  requestId: params.requestId 
-                });
-                if (body) {
-                  try {
-                    const data = JSON.parse(body);
-                    console.log(`[runway:gemini:discovery] Captured valid JSON from ${url}`);
-                    global.latestGeminiUsage = data;
-                    // Trigger a re-poll if we found new data
-                    pollAll();
-                  } catch (e) {
-                    // Not valid JSON, skip
+  
+  // Attach debugger only when window is hidden (polling mode) or established.
+  // Sometimes active debuggers trigger the "not secure" block.
+  function attachDebugger() {
+    try {
+      if (!view.debugger.isAttached()) {
+        view.debugger.attach('1.3');
+      }
+      
+      view.debugger.on('message', async (event, method, params) => {
+        if (method === 'Network.responseReceived') {
+          const url = params.response.url;
+          if (url.includes('/api/') && (url.includes('usage') || url.includes('quota') || url.includes('models'))) {
+            setTimeout(async () => {
+              try {
+                if (geminiWin && !geminiWin.isDestroyed()) {
+                  const { body } = await view.debugger.sendCommand('Network.getResponseBody', { 
+                    requestId: params.requestId 
+                  });
+                  if (body) {
+                    try {
+                      const data = JSON.parse(body);
+                      global.latestGeminiUsage = data;
+                      const { gemini } = require('@runway/core');
+                      const snap = await gemini.fetchQuota({ apiKey: null, fetchFn: async () => data, mode: 'pro' });
+                      if (snap) {
+                        snapshots['gemini'] = snap;
+                        updateTrayTitle();
+                        pushToPopup();
+                      }
+                    } catch (e) {}
                   }
                 }
-              }
-            } catch (e) {
-              // Body might be gone or not available yet
-            }
-          }, 500);
+              } catch (e) {}
+            }, 500);
+          }
         }
-      }
-    });
+      });
+      view.debugger.sendCommand('Network.enable');
+    } catch (err) {
+      console.error('[runway:gemini] Debugger attach failed:', err.message);
+    }
+  }
 
-    view.debugger.sendCommand('Network.enable');
-  } catch (err) {
-    console.error('[runway:gemini] Debugger attach failed:', err.message);
+  // If the window is showing (interactive login), we might want to delay debugger
+  // to avoid Google sensing automation.
+  if (geminiWin.isVisible()) {
+     geminiWin.webContents.once('did-finish-load', () => setTimeout(attachDebugger, 2000));
+  } else {
+     attachDebugger();
   }
 
   return geminiWin;
@@ -394,51 +439,74 @@ function isEnabled(config, provider) {
 
 // ── Poll all providers ────────────────────────────────────────────────────────
 async function pollAll() {
-  const config = loadConfig();
-  
-  // Pre-initialize snapshots for all enabled providers so they show up in the UI immediately
-  const { makeSnapshot } = require('@runway/core');
-  for (const name of PROVIDER_ORDER) {
-    if (isEnabled(config, name)) {
-      if (!snapshots[name]) {
-        snapshots[name] = makeSnapshot(name);
+  if (isPolling) return;
+  isPolling = true;
+
+  try {
+    const config = loadConfig();
+    
+    // Pre-initialize snapshots for all enabled providers
+    const { makeSnapshot } = require('@runway/core');
+    for (const name of PROVIDER_ORDER) {
+      if (isEnabled(config, name)) {
+        if (!snapshots[name]) {
+          snapshots[name] = makeSnapshot(name);
+        }
+      } else {
+        delete snapshots[name];
       }
-    } else {
-      delete snapshots[name];
     }
-  }
-  pushToPopup();
-  updateTrayTitle();
+    pushToPopup();
+    updateTrayTitle();
 
-  const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
-  const results = await Promise.allSettled([
-    tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
-    tag('codex',   isEnabled(config, 'codex')   ? pollCodex(config)   : Promise.resolve(null)),
-    tag('copilot', isEnabled(config, 'copilot') ? pollCopilot(config) : Promise.resolve(null)),
-    tag('gemini',  isEnabled(config, 'gemini')  ? pollGemini(config)  : Promise.resolve(null)),
-  ]);
+    const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
+    const results = await Promise.allSettled([
+      tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
+      tag('codex',   isEnabled(config, 'codex')   ? pollCodex(config)   : Promise.resolve(null)),
+      tag('copilot', isEnabled(config, 'copilot') ? pollCopilot(config) : Promise.resolve(null)),
+      tag('gemini',  isEnabled(config, 'gemini')  ? pollGemini(config)  : Promise.resolve(null)),
+    ]);
 
-  for (const r of results) {
-    if (r.status === 'fulfilled') {
-      const snap = r.value;
-      if (snap) {
-        snapshots[snap.agent] = snap;
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        const snap = r.value;
+        if (snap) {
+          snapshots[snap.agent] = snap;
+        }
+      } else if (r.status === 'rejected') {
+        const idx = results.indexOf(r);
+        const name = PROVIDER_ORDER[idx] || 'unknown';
+        console.error(`[runway:${name}] poll error:`, r.reason?.message ?? r.reason);
       }
-    } else if (r.status === 'rejected') {
-      const idx = results.indexOf(r);
-      const name = PROVIDER_ORDER[idx] || 'unknown';
-      console.error(`[runway:${name}] poll error:`, r.reason?.message ?? r.reason);
     }
-  }
 
-  resizePopup();
-  updateTrayTitle();
-  pushToPopup();
-  maybeWriteToAikb();
+    resizePopup();
+    updateTrayTitle();
+    pushToPopup();
+    maybeWriteToAikb();
+  } finally {
+    isPolling = false;
+  }
 }
 
 function resizePopup() {
   if (!popupWin || popupWin.isDestroyed()) return;
+  const config = loadConfig();
+
+  // If the user has manually resized the window, don't overwrite it with 'smart' sizing
+  if (config.popupWidth && config.popupHeight) {
+    return;
+  }
+
+  const orientation = config.orientation || 'vertical';
+  
+  if (orientation === 'horizontal') {
+    const activeCount = Object.keys(snapshots).length;
+    const width = Math.max(POPUP_WIDTH, activeCount * 120 + 40);
+    popupWin.setSize(width, 140);
+    return;
+  }
+
   let rows = 0;
   let anyNoData = false;
   for (const [, snap] of Object.entries(snapshots)) {
@@ -455,8 +523,10 @@ function resizePopup() {
 function buildTrayTitle() {
   const config = loadConfig();
   if (config.trayMode !== 'verbose') {
-    // In compact mode with no icon, keep the text fallback so the tray stays visible
-    return trayIconEmpty ? 'RW' : '';
+    // In compact mode, we have an icon. 
+    // If the icon is empty for some reason, show 'RW' so the tray remains clickable.
+    const icon = loadTrayIcon();
+    return icon.isEmpty() ? 'RW' : '';
   }
 
   const parts = [];
@@ -685,20 +755,28 @@ function schedulePoll() {
 
 function maybeWriteToAikb() {
   const config = loadConfig();
-  if (!config.aikbEventsDir) return;
+  let eventsDir = config.aikbEventsDir;
+
+  // Prefer root dir if set, appending the standard runtime path
+  if (config.aikbRootDir) {
+    eventsDir = path.join(config.aikbRootDir, '_runtime', 'events');
+  }
+
+  if (!eventsDir) return;
   const { writeSnapshots } = require('@runway/core');
-  writeSnapshots(Object.values(snapshots), config.aikbEventsDir);
+  writeSnapshots(Object.values(snapshots), eventsDir);
 }
 
 // ── Popup window ──────────────────────────────────────────────────────────────
 function createPopupWindow() {
+  const config = loadConfig();
   popupWin = new BrowserWindow({
-    width: POPUP_WIDTH,
-    height: POPUP_CHROME + POPUP_ROW_HEIGHT, // initial: 1 row, resized after first poll
+    width: config.popupWidth || POPUP_WIDTH,
+    height: config.popupHeight || (POPUP_CHROME + POPUP_ROW_HEIGHT),
     show: false,
     frame: false,
-    resizable: false,
-    alwaysOnTop: true,
+    resizable: true,
+    alwaysOnTop: config.pinned !== false,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -713,11 +791,19 @@ function createPopupWindow() {
   // between the window loading and the initial getSnapshots() call
   popupWin.webContents.once('did-finish-load', () => pushToPopup());
 
-  // Hide when focus is lost (click away)
+  // Hide when focus is lost (click away), UNLESS it's pinned
   popupWin.on('blur', () => {
+    const config = loadConfig();
+    if (config.pinned === true) return; // Keep visible if pinned
+
     if (popupWin && !popupWin.isDestroyed() && !settingsWin?.isFocused()) {
       popupWin.hide();
     }
+  });
+
+  popupWin.on('resized', () => {
+    const [w, h] = popupWin.getSize();
+    saveConfig({ popupWidth: w, popupHeight: h });
   });
 
   popupWin.on('closed', () => { popupWin = null; });
@@ -797,6 +883,13 @@ function createTray() {
   tray.setToolTip('Runway — AI quota tracker');
   trayMenu = Menu.buildFromTemplate([
     { label: 'Refresh Now', click: () => pollAll() },
+    { label: 'Hard Refresh…', click: () => {
+      // Force recreation of all hidden windows
+      if (claudeWin)  { claudeWin.destroy();  claudeWin = null; }
+      if (chatgptWin) { chatgptWin.destroy(); chatgptWin = null; }
+      if (geminiWin)  { geminiWin.destroy();  geminiWin = null; }
+      pollAll();
+    } },
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     { label: 'Login to Claude…', click: () => shell.openExternal('https://claude.ai') },
@@ -812,9 +905,9 @@ function createTray() {
       win.once('closed', () => pollAll());
     } },
     { type: 'separator' },
-    { label: 'Quit Runway', click: () => app.quit() },
+    { label: 'Quit Runway', click: () => app.exit(0) },
   ]);
-  tray.setContextMenu(trayMenu);
+  // tray.setContextMenu(trayMenu); // REMOVED to avoid double-overlap on click
 
   // Left click → toggle popup
   tray.on('click', togglePopup);
@@ -831,6 +924,7 @@ ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('get-runtime-info', () => getRuntimeInfo());
 ipcMain.handle('save-config', (_e, data) => {
   saveConfig(data);
+  if (tray) tray.setImage(loadTrayIcon());
   if ('openAtLogin' in data) applyOpenAtLogin(data.openAtLogin);
   // Clear snapshots so disabled providers disappear immediately from the gauge
   snapshots = {};
@@ -839,6 +933,24 @@ ipcMain.handle('save-config', (_e, data) => {
   return { ok: true };
 });
 ipcMain.handle('open-settings', openSettings);
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select AIKB Root Directory',
+    buttonLabel: 'Select Folder',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+ipcMain.handle('toggle-pin', () => {
+  const config = loadConfig();
+  const pinned = !(config.pinned !== false);
+  saveConfig({ pinned });
+  if (popupWin && !popupWin.isDestroyed()) {
+    popupWin.setAlwaysOnTop(pinned);
+  }
+  return { pinned };
+});
 ipcMain.handle('open-claude',    () => shell.openExternal('https://claude.ai'));
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.handle('refresh', () => pollAll());
@@ -1010,9 +1122,12 @@ app.whenReady().then(() => {
   shouldRevealOnReady = hasCustomProtocolArg(process.argv);
 
   createTray();
-  ensureClaudeWindow();
-  ensureChatGptWindow();
-  ensureGeminiWindow();
+
+  const config = loadConfig();
+  if (isEnabled(config, 'claude'))  ensureClaudeWindow();
+  if (isEnabled(config, 'codex'))   ensureChatGptWindow();
+  if (isEnabled(config, 'gemini'))  ensureGeminiWindow();
+
   startLocalServer();
 
   if (shouldRevealOnReady) revealRunway();

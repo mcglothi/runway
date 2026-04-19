@@ -38,17 +38,29 @@
     }
 
     .runway-mark {
-      width: 20px;
-      height: 20px;
-      background: linear-gradient(135deg, #0a84ff 0%, #6e40c9 100%);
-      border-radius: 5px;
+      width: 22px;
+      height: 22px;
+      background: #0F172A;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      font-weight: 800;
-      color: white;
       flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .runway-mark::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,194,255,0.15) 0%, rgba(110,64,201,0.15) 100%);
+    }
+    .runway-mark-inner {
+      width: 12px;
+      height: 12px;
+      position: relative;
+      z-index: 1;
     }
 
     #header-right {
@@ -69,12 +81,62 @@
       transition: color 0.15s, background 0.15s;
     }
     .icon-btn:hover { color: #e5e5ea; background: rgba(255,255,255,0.08); }
+    .icon-btn.active { color: #0a84ff; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
     .icon-btn.spinning { animation: spin 0.7s linear infinite; color: #636366; }
 
     #gauges {
       padding: 4px 0 2px;
+    }
+
+    #gauges.horizontal {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      gap: 12px;
+    }
+
+    #gauges.horizontal .provider-sep {
+      display: none;
+    }
+
+    #gauges.horizontal .row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 10px 8px;
+      gap: 6px;
+      width: 105px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 10px;
+    }
+
+    #gauges.horizontal .provider-icon {
+      margin-bottom: 2px;
+    }
+
+    #gauges.horizontal .agent-label {
+      align-items: center;
+      text-align: center;
+    }
+
+    #gauges.horizontal .bar-track {
+      width: 100%;
+      height: 4px;
+    }
+
+    #gauges.horizontal .pct {
+      text-align: center;
+      width: 100%;
+    }
+
+    #gauges.horizontal .runway-col {
+      text-align: center;
+      width: 100%;
+      font-size: 10px;
     }
 
     .provider-sep {
@@ -244,10 +306,22 @@
 
 <div id="header">
   <div id="header-left">
-    <div class="runway-mark">R</div>
+    <div class="runway-mark">
+      <svg class="runway-mark-inner" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 10L6 3L9 10" stroke="url(#mark-grad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4.5 7h3" stroke="url(#mark-grad)" stroke-width="1.8" stroke-linecap="round"/>
+        <defs>
+          <linearGradient id="mark-grad" x1="0" y1="0" x2="12" y2="12" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#00C2FF"/>
+            <stop offset="1" stop-color="#6E40C9"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
     <span>Runway</span>
   </div>
   <div id="header-right">
+    <button class="icon-btn" id="btn-pin" title="Pin to top">📌</button>
     <button class="icon-btn" id="btn-refresh" title="Refresh now">↻</button>
     <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
   </div>
@@ -285,9 +359,9 @@
     },
     gemini: {
       name: 'Gemini',
-      // 4-pointed star / sparkle — matches the Gemini logo shape
+      // 4-pointed star / sparkle — matches the Gemini logo shape (now in brand blue)
       icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 1C8 1 8.65 5.8 11.2 8C8.65 10.2 8 15 8 15C8 15 7.35 10.2 4.8 8C7.35 5.8 8 1 8 1Z" fill="#4285F4"/>
+        <path d="M8 1C8 1 8.65 5.8 11.2 8C8.65 10.2 8 15 8 15C8 15 7.35 10.2 4.8 8C7.35 5.8 8 1 8 1Z" fill="#8EBBFF"/>
         <path d="M1 8C1 8 5.8 8.65 8 11.2C10.2 8.65 15 8 15 8C15 8 10.2 7.35 8 4.8C5.8 7.35 1 8 1 8Z" fill="#4285F4"/>
       </svg>`,
     },
@@ -337,8 +411,28 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
+  async function updateOrientation() {
+    const config = await window.runway.getConfig();
+    const gauges = document.getElementById('gauges');
+    if (config.orientation === 'horizontal') {
+      gauges.classList.add('horizontal');
+    } else {
+      gauges.classList.remove('horizontal');
+    }
+    
+    const pinBtn = document.getElementById('btn-pin');
+    if (config.pinned !== false) {
+      pinBtn.classList.add('active');
+      pinBtn.textContent = '📌';
+    } else {
+      pinBtn.classList.remove('active');
+      pinBtn.textContent = '📍';
+    }
+  }
+
   function render(snapshots) {
     const gauges = document.getElementById('gauges');
+    updateOrientation();
 
     if (Object.keys(snapshots).length === 0) {
       gauges.innerHTML = `<div id="not-configured">
@@ -366,12 +460,9 @@
 
       // Special case: Gemini should always be a single Daily row
       if (agent === 'gemini') {
-        // Spread to avoid mutating the original snapshot object
         const geminiWin = { ...(snap.short || snap.long || {}) };
-        // Prioritize the count display from 'long' if provided (telemetry or pro session)
         if (snap.long?.text) geminiWin.text = snap.long.text;
-        const notLoggedIn = snap.long?.text === 'Not logged in';
-        return sep + renderWindowRow(agent, 'Daily', geminiWin, false, notLoggedIn);
+        return sep + renderWindowRow(agent, 'Daily', geminiWin, false);
       }
 
       if (snap.short && snap.long) {
@@ -493,8 +584,6 @@
           return `<strong>Claude</strong> — <a id="hint-claude">sign in to claude.ai</a> in the Runway window`;
         case 'codex':
           return `<strong>Codex</strong> — <a id="hint-codex">sign in to chatgpt.com</a> in the Runway window`;
-        case 'gemini':
-          return `<strong>Gemini</strong> — <a id="hint-gemini">sign in to AI Studio</a> or switch to Telemetry mode`;
         case 'copilot':
           return `<strong>Copilot</strong> — add your GitHub token in <a id="hint-settings">Settings</a>`;
         default:
@@ -539,6 +628,13 @@
   setInterval(updateFooter, 15000);
 
   // ── Init ──────────────────────────────────────────────────────────────────────
+  document.getElementById('btn-pin').addEventListener('click', async () => {
+    const { pinned } = await window.runway.togglePin();
+    const btn = document.getElementById('btn-pin');
+    btn.classList.toggle('active', pinned);
+    btn.textContent = pinned ? '📌' : '📍';
+  });
+
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
     btn.classList.add('spinning');

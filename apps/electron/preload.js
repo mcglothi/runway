@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('runway', {
   getRuntimeInfo: ()       => ipcRenderer.invoke('get-runtime-info'),
   saveConfig:    (data)    => ipcRenderer.invoke('save-config', data),
   openSettings:  ()        => ipcRenderer.invoke('open-settings'),
+  selectFolder:  ()        => ipcRenderer.invoke('select-folder'),
+  togglePin:     ()        => ipcRenderer.invoke('toggle-pin'),
   openClaude:    ()        => ipcRenderer.invoke('open-claude'),
   openChatGptLogin: ()    => ipcRenderer.invoke('open-chatgpt-login'),
   openGeminiLogin: ()     => ipcRenderer.invoke('open-gemini-login'),
