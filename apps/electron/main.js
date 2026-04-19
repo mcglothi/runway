@@ -3,7 +3,7 @@
 process.on('uncaughtException',    (err) => console.error('[runway] uncaughtException:', err));
 process.on('unhandledRejection',   (err) => console.error('[runway] unhandledRejection:', err));
 
-const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, session, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -713,9 +713,16 @@ function schedulePoll() {
 
 function maybeWriteToAikb() {
   const config = loadConfig();
-  if (!config.aikbEventsDir) return;
+  let eventsDir = config.aikbEventsDir;
+
+  // Prefer root dir if set, appending the standard runtime path
+  if (config.aikbRootDir) {
+    eventsDir = path.join(config.aikbRootDir, '_runtime', 'events');
+  }
+
+  if (!eventsDir) return;
   const { writeSnapshots } = require('@runway/core');
-  writeSnapshots(Object.values(snapshots), config.aikbEventsDir);
+  writeSnapshots(Object.values(snapshots), eventsDir);
 }
 
 // ── Popup window ──────────────────────────────────────────────────────────────
@@ -742,8 +749,11 @@ function createPopupWindow() {
   // between the window loading and the initial getSnapshots() call
   popupWin.webContents.once('did-finish-load', () => pushToPopup());
 
-  // Hide when focus is lost (click away)
+  // Hide when focus is lost (click away), UNLESS it's pinned
   popupWin.on('blur', () => {
+    const config = loadConfig();
+    if (config.pinned === true) return; // Keep visible if pinned
+
     if (popupWin && !popupWin.isDestroyed() && !settingsWin?.isFocused()) {
       popupWin.hide();
     }
@@ -868,6 +878,15 @@ ipcMain.handle('save-config', (_e, data) => {
   return { ok: true };
 });
 ipcMain.handle('open-settings', openSettings);
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select AIKB Root Directory',
+    buttonLabel: 'Select Folder',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
 ipcMain.handle('toggle-pin', () => {
   const config = loadConfig();
   const pinned = !(config.pinned !== false);

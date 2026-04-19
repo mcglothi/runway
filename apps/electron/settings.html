@@ -486,9 +486,12 @@
   </div>
   <div class="section-body">
     <div class="field">
-      <label for="aikbEventsDir">Events Directory</label>
-      <input type="text" id="aikbEventsDir" placeholder="/path/to/AIKB/_runtime/events" autocomplete="off" />
-      <div class="hint">If set, quota snapshots are appended to your AIKB runtime event log after each poll.</div>
+      <label for="aikbRootDir">AIKB Root Directory</label>
+      <div style="display: flex; gap: 8px;">
+        <input type="text" id="aikbRootDir" placeholder="/path/to/AIKB" autocomplete="off" />
+        <button id="btn-browse-aikb" style="background: #3a3a3c; color: #fff; padding: 0 12px; height: 32px; white-space: nowrap;">Browse...</button>
+      </div>
+      <div class="hint">Select your local AIKB folder. Runway will automatically append <code>_runtime/events</code> to log your quota snapshots.</div>
     </div>
   </div>
 </section>
@@ -525,7 +528,7 @@
     'geminiApiKey',
     'geminiTelemetryPath',
     'copilotToken', 'copilotEnterprise', 'copilotSeatCount',
-    'aikbEventsDir',
+    'aikbRootDir',
   ];
 
   // ── Toggle show/hide section body based on enabled state ──────────────────
@@ -645,6 +648,13 @@
   });
   document.getElementById('btn-login-gemini')?.addEventListener('click', () => {
     window.runway.openGeminiLogin();
+  });
+
+  document.getElementById('btn-browse-aikb')?.addEventListener('click', async () => {
+    const path = await window.runway.selectFolder();
+    if (path) {
+      document.getElementById('aikbRootDir').value = path;
+    }
   });
 
   // ── Link handlers ──────────────────────────────────────────────────────────
