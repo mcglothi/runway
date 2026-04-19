@@ -25,14 +25,8 @@ async function fetchQuota({ logContent, limit = 1500 }) {
   // Find the latest timestamp in the file to establish "now"
   let maxTs = 0;
   for (const obj of objects) {
-    for (const sm of obj.scopeMetrics || []) {
-      for (const m of sm.metrics || []) {
-        for (const dp of m.dataPoints || []) {
-          const ts = Array.isArray(dp.startTime) ? dp.startTime[0] : dp.startTime;
-          if (ts > maxTs) maxTs = ts;
-        }
-      }
-    }
+    const ts = Array.isArray(obj.startTime) ? obj.startTime[0] : obj.startTime;
+    if (ts && ts > maxTs) maxTs = ts;
   }
 
   // If no timestamps found, fall back to system clock
@@ -51,46 +45,26 @@ async function fetchQuota({ logContent, limit = 1500 }) {
   let proRequests = 0;
 
   for (const obj of objects) {
-    for (const sm of obj.scopeMetrics || []) {
-      for (const m of sm.metrics || []) {
-        if (m.descriptor?.name === 'gemini_cli.api.request.count') {
-          for (const dp of m.dataPoints || []) {
-            // dp.startTime is [seconds, nanoseconds]
-            const tsParts = dp.startTime;
-            const ts = Array.isArray(tsParts) ? tsParts[0] : tsParts;
+    const tsParts = obj.startTime;
+    const ts = Array.isArray(tsParts) ? tsParts[0] : tsParts;
 
-            if (ts && ts >= windowStartSeconds) {
-              const val = (dp.value || 0);
-              totalRequests += val;
-              
-              // Attribute to model if possible (OTLP attributes object)
-              let modelName = '';
-              const attrs = dp.attributes || {};
-              
-              if (Array.isArray(attrs)) {
-                 const modelAttr = attrs.find(a => a.key === 'model' || a.key === 'model_name' || a.key === 'gen_ai.request.model');
-                 modelName = modelAttr?.value?.stringValue || '';
-              } else {
-                 modelName = attrs['model'] || attrs['model_name'] || attrs['gen_ai.request.model'] || '';
-              }
-
-              if (modelName.toLowerCase().includes('flash')) {
-                flashRequests += val;
-              } else if (modelName.toLowerCase().includes('pro')) {
-                proRequests += val;
-              } else {
-                // Default to pro as the bottleneck if unknown
-                proRequests += val;
-              }
-            }
-          }
+    if (ts && ts >= windowStartSeconds) {
+      const attrs = obj.attributes || {};
+      const modelName = attrs['gen_ai.request.model'] || attrs['model'] || '';
+      
+      // We count every span that has a model attribute as a request
+      if (modelName) {
+        totalRequests++;
+        if (modelName.toLowerCase().includes('flash')) {
+          flashRequests++;
+        } else {
+          proRequests++;
         }
       }
     }
   }
 
   // Calculate utilization based on the most restrictive bottleneck
-  // (Usually Pro, but if they only use Flash, use that)
   let utilization = 0;
   let displayLimit = 1500;
   
@@ -109,7 +83,7 @@ async function fetchQuota({ logContent, limit = 1500 }) {
       runway_ms: estimateRunway(utilization, resetsAt.getTime()),
     },
     long: {
-      utilization: null, // we only use this for the text label
+      utilization: null,
       text: `${totalRequests}/${displayLimit}`,
     },
     raw: { totalRequests, proRequests, flashRequests, limit: displayLimit, windowStartSeconds },
@@ -123,51 +97,57 @@ async function fetchQuota({ logContent, limit = 1500 }) {
 function parseConcatenatedJson(content) {
   const objects = [];
   let pos = 0;
-  while (pos < content.length) {
-    const chunk = content.slice(pos).trim();
-    if (!chunk) break;
-    
-    try {
-      let depth = 0;
-      let inString = false;
-      let escape = false;
-      let end = -1;
+  
+  // Clean up common OTLP file artifacts
+  const cleanContent = content.trim();
+  if (!cleanContent) return [];
 
-      for (let i = 0; i < chunk.length; i++) {
-        const char = chunk[i];
-        if (escape) {
-          escape = false;
-          continue;
-        }
-        if (char === '\\') {
-          escape = true;
-          continue;
-        }
-        if (char === '"') {
-          inString = !inString;
-          continue;
-        }
-        if (!inString) {
-          if (char === '{') depth++;
-          else if (char === '}') {
-            depth--;
-            if (depth === 0) {
-              end = i + 1;
-              break;
-            }
+  while (pos < cleanContent.length) {
+    // Find the start of the next JSON object
+    const start = cleanContent.indexOf('{', pos);
+    if (start === -1) break;
+
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+
+    for (let i = start; i < cleanContent.length; i++) {
+      const char = cleanContent[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (char === '\\') {
+        escape = true;
+        continue;
+      }
+      if (char === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (!inString) {
+        if (char === '{') depth++;
+        else if (char === '}') {
+          depth--;
+          if (depth === 0) {
+            end = i + 1;
+            break;
           }
         }
       }
+    }
 
-      if (end === -1) break;
-
-      objects.push(JSON.parse(chunk.slice(0, end)));
-      pos += chunk.slice(0, end).length + (content.slice(pos).length - chunk.length);
-    } catch (e) {
-      // If we fail to parse, try to skip to the next {
-      const nextOpen = chunk.indexOf('{', 1);
-      if (nextOpen === -1) break;
-      pos += nextOpen;
+    if (end !== -1) {
+      try {
+        const jsonStr = cleanContent.slice(start, end);
+        objects.push(JSON.parse(jsonStr));
+        pos = end;
+      } catch (e) {
+        pos = start + 1; // Skip this '{' and try again
+      }
+    } else {
+      break; // Unclosed object
     }
   }
   return objects;

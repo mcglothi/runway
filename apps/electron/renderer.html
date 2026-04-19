@@ -460,12 +460,9 @@
 
       // Special case: Gemini should always be a single Daily row
       if (agent === 'gemini') {
-        // Spread to avoid mutating the original snapshot object
         const geminiWin = { ...(snap.short || snap.long || {}) };
-        // Prioritize the count display from 'long' if provided (telemetry or pro session)
         if (snap.long?.text) geminiWin.text = snap.long.text;
-        const notLoggedIn = snap.long?.text === 'Not logged in';
-        return sep + renderWindowRow(agent, 'Daily', geminiWin, false, notLoggedIn);
+        return sep + renderWindowRow(agent, 'Daily', geminiWin, false);
       }
 
       if (snap.short && snap.long) {
@@ -587,8 +584,6 @@
           return `<strong>Claude</strong> — <a id="hint-claude">sign in to claude.ai</a> in the Runway window`;
         case 'codex':
           return `<strong>Codex</strong> — <a id="hint-codex">sign in to chatgpt.com</a> in the Runway window`;
-        case 'gemini':
-          return `<strong>Gemini</strong> — <a id="hint-gemini">sign in to AI Studio</a> or switch to Telemetry mode`;
         case 'copilot':
           return `<strong>Copilot</strong> — add your GitHub token in <a id="hint-settings">Settings</a>`;
         default:
