@@ -57,8 +57,11 @@ function svgToDataUrl(svg) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
 
-function createGeneratedTrayIcon() {
+function createGeneratedTrayIcon(isTemplate = false) {
   const size = process.platform === 'win32' ? 32 : 18;
+  const strokeColor = isTemplate ? '#000000' : 'url(#icon-grad)';
+  const bgColor = isTemplate ? 'none' : '#0F172A';
+  
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18">
       <defs>
@@ -67,20 +70,31 @@ function createGeneratedTrayIcon() {
           <stop offset="100%" stop-color="#6E40C9" />
         </linearGradient>
       </defs>
-      <rect x="1" y="1" width="16" height="16" rx="4.5" fill="#0F172A" />
-      <path d="M4.5 13.5l3-9 3 9" fill="none" stroke="url(#icon-grad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M7 9.5h2" fill="none" stroke="url(#icon-grad)" stroke-width="1.8" stroke-linecap="round"/>
+      ${bgColor !== 'none' ? `<rect x="1" y="1" width="16" height="16" rx="4.5" fill="${bgColor}" />` : ''}
+      <path d="M4.5 13.5l3-9 3 9" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 9.5h2" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round"/>
+      ${!isTemplate ? `
       <circle cx="13.5" cy="4.5" r="1.2" fill="#00C2FF">
         <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
-      </circle>
+      </circle>` : ''}
     </svg>
   `;
   let icon = nativeImage.createFromDataURL(svgToDataUrl(svg));
-  if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
+  if (process.platform === 'darwin') {
+    icon = icon.resize({ width: 16, height: 16 });
+    if (isTemplate) icon.setTemplateImage(true);
+  }
   return icon;
 }
 
 function loadTrayIcon() {
+  const config = loadConfig();
+  
+  // In verbose mode, the user wants NO icon, just the text
+  if (config.trayMode === 'verbose') {
+    return nativeImage.createEmpty();
+  }
+
   const candidates = [
     path.join(__dirname, 'build-assets', 'icon.png'),
     path.join(__dirname, 'icon.png'),
@@ -96,7 +110,9 @@ function loadTrayIcon() {
       return icon;
     }
   }
-  return createGeneratedTrayIcon();
+  
+  // Fall back to generated template-friendly icon for macOS
+  return createGeneratedTrayIcon(process.platform === 'darwin');
 }
 
 function hasCustomProtocolArg(argv = []) {
@@ -495,8 +511,10 @@ function resizePopup() {
 function buildTrayTitle() {
   const config = loadConfig();
   if (config.trayMode !== 'verbose') {
-    // In compact mode with no icon, keep the text fallback so the tray stays visible
-    return trayIconEmpty ? 'RW' : '';
+    // In compact mode, we have an icon. 
+    // If the icon is empty for some reason, show 'RW' so the tray remains clickable.
+    const icon = loadTrayIcon();
+    return icon.isEmpty() ? 'RW' : '';
   }
 
   const parts = [];
