@@ -1,6 +1,6 @@
 {
   "name": "runway",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Quota and context tracking for AI agents — system tray widget and browser extension",
   "private": true,
   "workspaces": [

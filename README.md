@@ -56,7 +56,7 @@ Runway fixes that. It's a system tray widget and browser extension that tracks q
 | **Gemini** | Session / API Key | AI Studio usage API / Google API | ✅ Built (Requests/Day) |
 | **Copilot** | GitHub PAT | GitHub Enterprise Metrics API | ✅ Built |
 
-## Latest Features (v0.1.0)
+## Latest Features (v0.1.1)
 - **Unified Mode Selection:** Every provider now supports a "Pro Plan" vs "API Key" toggle.
   - **Pro Plan:** Rides your browser session (Claude.ai, ChatGPT, AI Studio) to track your subscription-based quotas.
   - **API Key:** Uses standard developer keys for users paying by the token.
@@ -182,8 +182,8 @@ After release DMGs exist, generate the Homebrew cask with:
 
 ```bash
 npm run dist:homebrew-cask -- \
-  --arm64 dist/Runway-0.1.0-arm64.dmg \
-  --x64 dist/Runway-0.1.0-x64.dmg
+  --arm64 dist/Runway-x.y.z-arm64.dmg \
+  --x64 dist/Runway-x.y.z-x64.dmg
 ```
 
 **5. Install the browser extension (Chrome)**

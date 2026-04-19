@@ -1,8 +1,11 @@
 {
   "name": "@runway/electron",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runway system tray widget",
-  "author": "Tim McGlothlin",
+  "author": {
+    "name": "Tim McGlothlin",
+    "email": "tim@mcglothin.net"
+  },
   "homepage": "https://github.com/mcglothi/runway",
   "main": "main.js",
   "scripts": {
