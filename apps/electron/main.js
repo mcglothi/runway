@@ -310,16 +310,19 @@ function ensureGeminiWindow() {
     width: 1000,
     height: 800,
     show: false,
+    title: 'Login to Google AI Studio',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:gemini',
       backgroundThrottling: true,
+      // Google often blocks windows that look like automation
+      devTools: true, 
     },
   });
 
-  // Use a standard Chrome User-Agent to avoid "Insecure Browser" blocks
-  const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+  // Modern Chrome User-Agent on macOS - crucial for Google login trust
+  const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36';
   geminiWin.webContents.setUserAgent(userAgent);
 
   geminiWin.loadURL('https://aistudio.google.com/app/usage');
@@ -327,53 +330,56 @@ function ensureGeminiWindow() {
 
   // Monitor network traffic using Debugger to capture response bodies
   const view = geminiWin.webContents;
-  try {
-    if (!view.debugger.isAttached()) {
-      view.debugger.attach('1.3');
-    }
-    
-    view.debugger.on('message', async (event, method, params) => {
-      if (method === 'Network.responseReceived') {
-        const url = params.response.url;
-        // Intercept any JSON responses that look like usage data
-        if (url.includes('/api/') && (url.includes('usage') || url.includes('quota') || url.includes('models'))) {
-          // Allow some time for the response body to be ready in CDP
-          setTimeout(async () => {
-            try {
-              if (geminiWin && !geminiWin.isDestroyed()) {
-                const { body } = await view.debugger.sendCommand('Network.getResponseBody', { 
-                  requestId: params.requestId 
-                });
-                if (body) {
-                  try {
-                    const data = JSON.parse(body);
-                    console.log(`[runway:gemini:discovery] Captured valid JSON from ${url}`);
-                    global.latestGeminiUsage = data;
-                    
-                    // Direct snapshot update instead of global pollAll() to avoid thundering herd/loops
-                    const { gemini } = require('@runway/core');
-                    const snap = await gemini.fetchQuota({ apiKey: null, fetchFn: async () => data, mode: 'pro' });
-                    if (snap) {
-                      snapshots['gemini'] = snap;
-                      updateTrayTitle();
-                      pushToPopup();
-                    }
-                  } catch (e) {
-                    // Not valid JSON, skip
+  
+  // Attach debugger only when window is hidden (polling mode) or established.
+  // Sometimes active debuggers trigger the "not secure" block.
+  function attachDebugger() {
+    try {
+      if (!view.debugger.isAttached()) {
+        view.debugger.attach('1.3');
+      }
+      
+      view.debugger.on('message', async (event, method, params) => {
+        if (method === 'Network.responseReceived') {
+          const url = params.response.url;
+          if (url.includes('/api/') && (url.includes('usage') || url.includes('quota') || url.includes('models'))) {
+            setTimeout(async () => {
+              try {
+                if (geminiWin && !geminiWin.isDestroyed()) {
+                  const { body } = await view.debugger.sendCommand('Network.getResponseBody', { 
+                    requestId: params.requestId 
+                  });
+                  if (body) {
+                    try {
+                      const data = JSON.parse(body);
+                      global.latestGeminiUsage = data;
+                      const { gemini } = require('@runway/core');
+                      const snap = await gemini.fetchQuota({ apiKey: null, fetchFn: async () => data, mode: 'pro' });
+                      if (snap) {
+                        snapshots['gemini'] = snap;
+                        updateTrayTitle();
+                        pushToPopup();
+                      }
+                    } catch (e) {}
                   }
                 }
-              }
-            } catch (e) {
-              // Body might be gone or not available yet
-            }
-          }, 500);
+              } catch (e) {}
+            }, 500);
+          }
         }
-      }
-    });
+      });
+      view.debugger.sendCommand('Network.enable');
+    } catch (err) {
+      console.error('[runway:gemini] Debugger attach failed:', err.message);
+    }
+  }
 
-    view.debugger.sendCommand('Network.enable');
-  } catch (err) {
-    console.error('[runway:gemini] Debugger attach failed:', err.message);
+  // If the window is showing (interactive login), we might want to delay debugger
+  // to avoid Google sensing automation.
+  if (geminiWin.isVisible()) {
+     geminiWin.webContents.once('did-finish-load', () => setTimeout(attachDebugger, 2000));
+  } else {
+     attachDebugger();
   }
 
   return geminiWin;
