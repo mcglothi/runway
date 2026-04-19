@@ -700,7 +700,8 @@
 
     try {
       await window.runway.saveConfig(data);
-      setStatus('Saved — refreshing…');
+      setStatus('Saved!');
+      setTimeout(() => window.close(), 500);
     } catch (err) {
       setStatus('Save failed: ' + err.message, true);
     }

@@ -60,19 +60,20 @@ function svgToDataUrl(svg) {
 function createGeneratedTrayIcon(isTemplate = false) {
   const size = process.platform === 'win32' ? 32 : 18;
   const strokeColor = isTemplate ? '#000000' : 'url(#icon-grad)';
-  const bgColor = isTemplate ? 'none' : '#0F172A';
   
+  // For template images, we MUST NOT have any background rect or fill.
+  // Just the paths that will be tinted by macOS.
   const svg = `
-    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18">
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18" fill="none">
       <defs>
         <linearGradient id="icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stop-color="#00C2FF" />
           <stop offset="100%" stop-color="#6E40C9" />
         </linearGradient>
       </defs>
-      ${bgColor !== 'none' ? `<rect x="1" y="1" width="16" height="16" rx="4.5" fill="${bgColor}" />` : ''}
-      <path d="M4.5 13.5l3-9 3 9" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="M7 9.5h2" fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round"/>
+      ${!isTemplate ? `<rect x="1" y="1" width="16" height="16" rx="4.5" fill="#0F172A" />` : ''}
+      <path d="M4.5 13.5l3-9 3 9" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 9.5h2" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round"/>
       ${!isTemplate ? `
       <circle cx="13.5" cy="4.5" r="1.2" fill="#00C2FF">
         <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
@@ -95,6 +96,12 @@ function loadTrayIcon() {
     return nativeImage.createEmpty();
   }
 
+  // Always use the generated template icon for macOS menubar to ensure
+  // it looks "modern" and matches the brand mark without being a white box.
+  if (process.platform === 'darwin') {
+    return createGeneratedTrayIcon(true);
+  }
+
   const candidates = [
     path.join(__dirname, 'build-assets', 'icon.png'),
     path.join(__dirname, 'icon.png'),
@@ -102,17 +109,10 @@ function loadTrayIcon() {
   for (const iconPath of candidates) {
     if (!fs.existsSync(iconPath)) continue;
     let icon = nativeImage.createFromPath(iconPath);
-    if (!icon.isEmpty()) {
-      if (process.platform === 'darwin') {
-        icon = icon.resize({ width: 16, height: 16 });
-        icon.setTemplateImage(true);
-      }
-      return icon;
-    }
+    if (!icon.isEmpty()) return icon;
   }
   
-  // Fall back to generated template-friendly icon for macOS
-  return createGeneratedTrayIcon(process.platform === 'darwin');
+  return createGeneratedTrayIcon(false);
 }
 
 function hasCustomProtocolArg(argv = []) {
