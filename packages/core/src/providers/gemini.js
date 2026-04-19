@@ -37,12 +37,22 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
           // Path 2: data.quotas[].limit + data.quotas[].usage
           
           let used = 0;
-          let limit = 1500; // default Pro plan
+          let limit = 1500; // default Pro plan (1500 RPD)
 
           if (data.limits && data.usage) {
-            const proUsage = data.usage.find(u => u.model?.includes('pro')) || data.usage[0];
-            used = proUsage ? (proUsage.requestCount ?? 0) : 0;
-            limit = data.limits.requestsPerDay || 1500;
+            // Priority 1: Match 'pro' specifically for 1.5 Pro limit (1500)
+            // Priority 2: Match 'flash' for 1.5 Flash limit (1M)
+            const flashUsage = data.usage.find(u => u.model?.includes('flash'));
+            const proUsage = data.usage.find(u => u.model?.includes('pro'));
+            
+            // Prefer pro if available as it's the more restrictive bottleneck
+            const targetUsage = proUsage || flashUsage || data.usage[0];
+            used = targetUsage ? (targetUsage.requestCount ?? 0) : 0;
+            
+            // Intelligent limit fallback based on model type
+            const isFlash = targetUsage?.model?.includes('flash');
+            const defaultLimit = isFlash ? 1000000 : 1500;
+            limit = data.limits.requestsPerDay || defaultLimit;
           } else if (data.quotas && Array.isArray(data.quotas)) {
             // Find requests-per-day metric
             const rpdQuota = data.quotas.find(q => q.metric?.includes('requests_per_day')) || 
@@ -107,10 +117,11 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
  * @param {number} resetMs
  */
 function estimateRunway(utilization, resetMs) {
-  if (utilization == null || utilization >= 100) return 0;
+  if (utilization == null) return 0;
   const msLeftInWindow = resetMs - Date.now();
   if (msLeftInWindow <= 0) return 0;
   if (utilization <= 0) return msLeftInWindow;
+  if (utilization >= 100) return 0;
 
   const remaining = 100 - utilization;
   // Linear projection: if we burned X% in (24h - msLeft), rate = X% / elapsed
