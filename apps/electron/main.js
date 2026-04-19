@@ -655,7 +655,20 @@ async function pollGemini(config) {
     console.log(`[runway:gemini] Telemetry mode active. Path: ${filePath}`);
     try {
       if (fs.existsSync(filePath)) {
-        const logContent = fs.readFileSync(filePath, 'utf8');
+        // Read only the last 512 KB of the telemetry file — the 24-hour window
+        // only needs recent entries, and large files (GB+) crash Node when fully loaded.
+        const TAIL_BYTES = 512 * 1024;
+        const stat = fs.statSync(filePath);
+        let logContent;
+        if (stat.size > TAIL_BYTES) {
+          const fd = fs.openSync(filePath, 'r');
+          const buf = Buffer.alloc(TAIL_BYTES);
+          fs.readSync(fd, buf, 0, TAIL_BYTES, stat.size - TAIL_BYTES);
+          fs.closeSync(fd);
+          logContent = buf.toString('utf8');
+        } else {
+          logContent = fs.readFileSync(filePath, 'utf8');
+        }
         const snap = await geminiTelemetry.fetchQuota({ logContent });
         console.log(`[runway:gemini] Telemetry snapshot: utilization=${snap.short?.utilization}% requests=${snap.raw?.totalRequests}`);
         return snap;
@@ -1148,10 +1161,10 @@ app.whenReady().then(() => {
 
   createTray();
 
-  const config = loadConfig();
-  if (isEnabled(config, 'claude'))  ensureClaudeWindow();
-  if (isEnabled(config, 'codex'))   ensureChatGptWindow();
-  if (isEnabled(config, 'gemini'))  ensureGeminiWindow();
+  // Removed eager window pre-warming — each ensure*Window() is called lazily
+  // from its poll function on first use. Eagerly loading URLs for all three
+  // providers simultaneously at startup triggers a c-ares DNS crash on macOS
+  // Tahoe (26.x). Lazy creation avoids this and has no functional impact.
 
   startLocalServer();
 
