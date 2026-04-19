@@ -53,6 +53,25 @@ let trayIconEmpty = false; // true when we had to fall back to a generated icon
 let shouldRevealOnReady = false;
 let trayMenu = null;
 
+// ── Debounce / throttle helpers ───────────────────────────────────────────────
+function debounce(fn, ms) {
+  let timer = null;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), ms);
+  };
+}
+
+// Throttle pushToPopup: max one IPC send per 2s regardless of call source
+let lastPushTime = 0;
+const PUSH_THROTTLE_MS = 2000;
+function throttledPush() {
+  const now = Date.now();
+  if (now - lastPushTime < PUSH_THROTTLE_MS) return;
+  lastPushTime = now;
+  pushToPopup();
+}
+
 function svgToDataUrl(svg) {
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
 }
@@ -358,7 +377,7 @@ function ensureGeminiWindow() {
                       if (snap) {
                         snapshots['gemini'] = snap;
                         updateTrayTitle();
-                        pushToPopup();
+                        throttledPush();
                       }
                     } catch (e) {}
                   }
@@ -456,7 +475,7 @@ async function pollAll() {
         delete snapshots[name];
       }
     }
-    pushToPopup();
+    throttledPush();
     updateTrayTitle();
 
     const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
@@ -482,7 +501,7 @@ async function pollAll() {
 
     resizePopup();
     updateTrayTitle();
-    pushToPopup();
+    throttledPush();
     maybeWriteToAikb();
   } finally {
     isPolling = false;
@@ -723,10 +742,16 @@ function ensureGeminiTelemetryWatcher(filePath) {
   if (!filePath || !fs.existsSync(filePath)) return;
 
   try {
+    // Debounce fs.watch events — macOS FSEvents fires multiple times per write.
+    // 1s debounce prevents rapid-fire pollAll() calls from a single file change.
+    const onTelemetryChange = debounce(() => {
+      console.log('[runway:gemini] Telemetry file changed — polling');
+      pollAll();
+    }, 1000);
+
     geminiTelemetryWatcher = fs.watch(filePath, { persistent: false }, (eventType) => {
       if (eventType === 'change') {
-        console.log('[runway:gemini] Telemetry file changed — polling');
-        pollAll();
+        onTelemetryChange();
       }
     });
     geminiTelemetryWatcher.on('error', (err) => {
