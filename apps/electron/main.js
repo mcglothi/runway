@@ -492,6 +492,12 @@ async function pollAll() {
 function resizePopup() {
   if (!popupWin || popupWin.isDestroyed()) return;
   const config = loadConfig();
+
+  // If the user has manually resized the window, don't overwrite it with 'smart' sizing
+  if (config.popupWidth && config.popupHeight) {
+    return;
+  }
+
   const orientation = config.orientation || 'vertical';
   
   if (orientation === 'horizontal') {
@@ -765,8 +771,8 @@ function maybeWriteToAikb() {
 function createPopupWindow() {
   const config = loadConfig();
   popupWin = new BrowserWindow({
-    width: POPUP_WIDTH,
-    height: POPUP_CHROME + POPUP_ROW_HEIGHT, // initial: 1 row, resized after first poll
+    width: config.popupWidth || POPUP_WIDTH,
+    height: config.popupHeight || (POPUP_CHROME + POPUP_ROW_HEIGHT),
     show: false,
     frame: false,
     resizable: true,
@@ -793,6 +799,11 @@ function createPopupWindow() {
     if (popupWin && !popupWin.isDestroyed() && !settingsWin?.isFocused()) {
       popupWin.hide();
     }
+  });
+
+  popupWin.on('resized', () => {
+    const [w, h] = popupWin.getSize();
+    saveConfig({ popupWidth: w, popupHeight: h });
   });
 
   popupWin.on('closed', () => { popupWin = null; });
