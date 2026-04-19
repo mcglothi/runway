@@ -671,6 +671,7 @@ async function pollGemini(config) {
         }
         const snap = await geminiTelemetry.fetchQuota({ logContent });
         console.log(`[runway:gemini] Telemetry snapshot: utilization=${snap.short?.utilization}% requests=${snap.raw?.totalRequests}`);
+        maybeTrimTelemetryFile(filePath);
         return snap;
       } else {
         console.warn(`[runway:gemini] Telemetry file NOT FOUND: ${filePath}`);
@@ -705,6 +706,32 @@ async function pollGemini(config) {
     }
     return snap;
   });
+}
+
+// ── Gemini telemetry file trimmer ─────────────────────────────────────────────
+const TELEMETRY_TRIM_THRESHOLD = 50  * 1024 * 1024; // trim when > 50 MB
+const TELEMETRY_KEEP_BYTES     =  2  * 1024 * 1024; // keep last 2 MB
+
+/**
+ * If the telemetry file has grown past TRIM_THRESHOLD, atomically rewrite it
+ * with only the last KEEP_BYTES. Called after each successful read so the file
+ * never accumulates more than ~50 MB between polls.
+ */
+function maybeTrimTelemetryFile(filePath) {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size <= TELEMETRY_TRIM_THRESHOLD) return;
+    const fd = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(TELEMETRY_KEEP_BYTES);
+    fs.readSync(fd, buf, 0, TELEMETRY_KEEP_BYTES, stat.size - TELEMETRY_KEEP_BYTES);
+    fs.closeSync(fd);
+    const tmp = filePath + '.runway_trim_tmp';
+    fs.writeFileSync(tmp, buf);
+    fs.renameSync(tmp, filePath);
+    console.log(`[runway:gemini] Trimmed telemetry file: ${(stat.size / 1024 / 1024).toFixed(1)} MB → ${(TELEMETRY_KEEP_BYTES / 1024).toFixed(0)} KB`);
+  } catch (e) {
+    console.warn('[runway:gemini] Trim failed (non-fatal):', e.message);
+  }
 }
 
 // ── Gemini telemetry auto-detection + file watcher ───────────────────────────
