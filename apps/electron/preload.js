@@ -5,6 +5,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('runway', {
   getSnapshots:  ()        => ipcRenderer.invoke('get-snapshots'),
   getConfig:     ()        => ipcRenderer.invoke('get-config'),
+  getRuntimeInfo: ()       => ipcRenderer.invoke('get-runtime-info'),
   saveConfig:    (data)    => ipcRenderer.invoke('save-config', data),
   openSettings:  ()        => ipcRenderer.invoke('open-settings'),
   openClaude:    ()        => ipcRenderer.invoke('open-claude'),

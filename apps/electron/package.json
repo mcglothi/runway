@@ -1,7 +1,12 @@
 {
   "name": "@runway/electron",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Runway system tray widget",
+  "author": {
+    "name": "Tim McGlothlin",
+    "email": "tim@mcglothin.net"
+  },
+  "homepage": "https://github.com/mcglothi/runway",
   "main": "main.js",
   "scripts": {
     "dev": "electron .",
@@ -14,7 +19,8 @@
     "@runway/core": "*"
   },
   "devDependencies": {
-    "electron": "^34.0.0",
+    "7zip-bin": "~5.2.0",
+    "electron": "34.0.0",
     "electron-builder": "^24.0.0"
   },
   "build": {
@@ -31,7 +37,7 @@
       "renderer.html",
       "settings.html",
       "discovery.js",
-      "icon.png",
+      "build-assets/**/*",
       "../../packages/core/src/**/*",
       "../../packages/core/package.json",
       "node_modules/**/*"
@@ -55,8 +61,12 @@
       "artifactName": "${productName}-${version}-${arch}.${ext}"
     },
     "linux": {
-      "target": "AppImage",
-      "category": "Development"
+      "target": ["AppImage", "deb"],
+      "category": "Development",
+      "icon": "build-assets/icons",
+      "desktop": {
+        "StartupNotify": "false"
+      }
     },
     "win": {
       "target": "nsis",
@@ -65,6 +75,15 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false
+    },
+    "protocols": [
+      {
+        "name": "Runway",
+        "schemes": ["runway"]
+      }
+    ],
+    "extraMetadata": {
+      "main": "main.js"
     },
     "publish": {
       "provider": "github",

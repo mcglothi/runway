@@ -7,6 +7,7 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell, ses
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const os = require('os');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
@@ -41,12 +42,144 @@ const POPUP_CHROME = 88;      // header + footer fixed height
 const POPUP_HINT_HEIGHT = 56; // connect-hint banner, approximate
 const LOCAL_SERVER_PORT = 47821;
 const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
+const CUSTOM_PROTOCOL = 'runway://';
 
 // Abbreviated labels used in the verbose tray title
 const TRAY_LABELS = { claude: 'C', codex: 'Cx', gemini: 'G', copilot: 'Cp' };
 
 let localServer = null;
-let trayIconEmpty = false; // true when no icon.png found — we use text fallback
+let trayIconEmpty = false; // true when we had to fall back to a generated icon
+let shouldRevealOnReady = false;
+let trayMenu = null;
+
+function svgToDataUrl(svg) {
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
+}
+
+function createGeneratedTrayIcon() {
+  const size = process.platform === 'win32' ? 32 : 18;
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18">
+      <rect x="1" y="1" width="16" height="16" rx="4" fill="#111827" />
+      <path d="M4 12.5h2.2L8.5 5.5H10l2.1 7h1.9" fill="none" stroke="#f59e0b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="12.8" cy="12.4" r="1.3" fill="#60a5fa" />
+    </svg>
+  `;
+  let icon = nativeImage.createFromDataURL(svgToDataUrl(svg));
+  if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
+  return icon;
+}
+
+function loadTrayIcon() {
+  const candidates = [
+    path.join(__dirname, 'build-assets', 'icon.png'),
+    path.join(__dirname, 'icon.png'),
+  ];
+  for (const iconPath of candidates) {
+    if (!fs.existsSync(iconPath)) continue;
+    let icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
+      return icon;
+    }
+  }
+  return createGeneratedTrayIcon();
+}
+
+function hasCustomProtocolArg(argv = []) {
+  return argv.some((arg) => typeof arg === 'string' && arg.startsWith(CUSTOM_PROTOCOL));
+}
+
+function supportsOpenAtLogin() {
+  if (process.platform === 'linux') return app.isPackaged;
+  return process.platform === 'darwin' || process.platform === 'win32';
+}
+
+function getLinuxAutostartFile() {
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+  return path.join(configHome, 'autostart', 'runway.desktop');
+}
+
+function getLinuxDesktopEntry() {
+  const execPath = process.execPath.replace(/(["\\$`])/g, '\\$1');
+  return [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Version=1.0',
+    'Name=Runway',
+    'Comment=AI quota tracker tray app',
+    `Exec="${execPath}"`,
+    'Terminal=false',
+    'Categories=Development;',
+    'StartupNotify=false',
+    'X-GNOME-Autostart-enabled=true',
+    '',
+  ].join('\n');
+}
+
+function getOpenAtLogin() {
+  if (process.platform === 'linux') {
+    return fs.existsSync(getLinuxAutostartFile());
+  }
+  if (!supportsOpenAtLogin()) return false;
+  try {
+    return app.getLoginItemSettings().openAtLogin === true;
+  } catch {
+    return false;
+  }
+}
+
+function applyOpenAtLogin(enabled) {
+  const openAtLogin = enabled === true;
+  if (process.platform === 'linux') {
+    const autostartFile = getLinuxAutostartFile();
+    if (!app.isPackaged) {
+      if (!openAtLogin && fs.existsSync(autostartFile)) fs.rmSync(autostartFile, { force: true });
+      return;
+    }
+    if (openAtLogin) {
+      fs.mkdirSync(path.dirname(autostartFile), { recursive: true });
+      fs.writeFileSync(autostartFile, getLinuxDesktopEntry(), 'utf8');
+    } else if (fs.existsSync(autostartFile)) {
+      fs.rmSync(autostartFile, { force: true });
+    }
+    return;
+  }
+  if (!supportsOpenAtLogin()) return;
+  if (process.platform === 'darwin') {
+    app.setLoginItemSettings({ openAtLogin, openAsHidden: true });
+    return;
+  }
+  if (process.platform === 'win32') {
+    app.setLoginItemSettings({ openAtLogin });
+  }
+}
+
+function getRuntimeInfo() {
+  return {
+    platform: process.platform,
+    platformLabel:
+      process.platform === 'darwin' ? 'macOS' :
+      process.platform === 'win32' ? 'Windows' :
+      process.platform === 'linux' ? 'Linux' :
+      process.platform,
+    supportsOpenAtLogin: supportsOpenAtLogin(),
+    openAtLogin: getOpenAtLogin(),
+  };
+}
+
+function revealRunway() {
+  if (!tray) {
+    shouldRevealOnReady = true;
+    return;
+  }
+  shouldRevealOnReady = false;
+  if (!popupWin || popupWin.isDestroyed()) createPopupWindow();
+  positionPopupNearTray();
+  popupWin.show();
+  popupWin.focus();
+  pushToPopup();
+}
 
 // ── Claude hidden window ──────────────────────────────────────────────────────
 function ensureClaudeWindow() {
@@ -609,7 +742,7 @@ function positionPopupNearTray() {
   const display = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
   const workArea = display.workArea;
 
-  // Default: above the tray on macOS (menu bar at top)
+  // Start below the tray/menu area, then flip above if we would overflow.
   let x = Math.round(bounds.x + bounds.width / 2 - POPUP_WIDTH / 2);
   let y = Math.round(bounds.y + bounds.height + 4);
 
@@ -653,57 +786,52 @@ function openSettings() {
 
 // ── Tray ──────────────────────────────────────────────────────────────────────
 function createTray() {
-  // Load icon, fall back gracefully
-  let icon;
-  const iconPath = path.join(__dirname, 'icon.png');
-  if (fs.existsSync(iconPath)) {
-    icon = nativeImage.createFromPath(iconPath);
-    if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
-  } else {
-    icon = nativeImage.createEmpty();
-  }
+  const icon = loadTrayIcon();
 
   tray = new Tray(icon);
   trayIconEmpty = icon.isEmpty();
 
-  // Fallback text label if no icon (visible on macOS menu bar)
+  // Text fallback is only meaningful on macOS and some Linux shells.
   if (trayIconEmpty) tray.setTitle('RW');
 
   tray.setToolTip('Runway — AI quota tracker');
+  trayMenu = Menu.buildFromTemplate([
+    { label: 'Refresh Now', click: () => pollAll() },
+    { label: 'Settings…', click: openSettings },
+    { type: 'separator' },
+    { label: 'Login to Claude…', click: () => shell.openExternal('https://claude.ai') },
+    { label: 'Login to ChatGPT…', click: () => {
+      const win = ensureChatGptWindow();
+      win.show();
+      win.focus();
+    } },
+    { label: 'Login to AI Studio…', click: () => {
+      const win = ensureGeminiWindow();
+      win.show();
+      win.focus();
+      win.once('closed', () => pollAll());
+    } },
+    { type: 'separator' },
+    { label: 'Quit Runway', click: () => app.quit() },
+  ]);
+  tray.setContextMenu(trayMenu);
 
   // Left click → toggle popup
   tray.on('click', togglePopup);
 
   // Right click → context menu
   tray.on('right-click', () => {
-    const menu = Menu.buildFromTemplate([
-      { label: 'Refresh Now', click: () => pollAll() },
-      { label: 'Settings…', click: openSettings },
-      { type: 'separator' },
-      { label: 'Login to Claude…', click: () => shell.openExternal('https://claude.ai') },
-      { label: 'Login to ChatGPT…', click: () => {
-        const win = ensureChatGptWindow();
-        win.show();
-        win.focus();
-      } },
-      { label: 'Login to AI Studio…', click: () => {
-        const win = ensureGeminiWindow();
-        win.show();
-        win.focus();
-        win.once('closed', () => pollAll());
-      } },
-      { type: 'separator' },
-      { label: 'Quit Runway', click: () => app.quit() },
-    ]);
-    tray.popUpContextMenu(menu);
+    tray.popUpContextMenu(trayMenu);
   });
 }
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 ipcMain.handle('get-snapshots', () => snapshots);
 ipcMain.handle('get-config', () => loadConfig());
+ipcMain.handle('get-runtime-info', () => getRuntimeInfo());
 ipcMain.handle('save-config', (_e, data) => {
   saveConfig(data);
+  if ('openAtLogin' in data) applyOpenAtLogin(data.openAtLogin);
   // Clear snapshots so disabled providers disappear immediately from the gauge
   snapshots = {};
   schedulePoll(); // re-read interval in case it changed
@@ -856,6 +984,8 @@ function startLocalServer() {
 app.whenReady().then(() => {
   // macOS: don't show in dock
   if (process.platform === 'darwin') app.dock?.hide();
+  if (process.platform === 'win32') app.setAppUserModelId('com.mcglothi.runway');
+  applyOpenAtLogin(loadConfig().openAtLogin);
 
   // Single instance — bring popup to front if a second instance is launched
   // (also handles runway:// protocol opens when app is already running)
@@ -863,14 +993,21 @@ app.whenReady().then(() => {
     app.quit();
     return;
   }
-  app.on('second-instance', () => tray && togglePopup());
+  app.on('second-instance', (_event, commandLine) => {
+    if (hasCustomProtocolArg(commandLine)) {
+      revealRunway();
+      return;
+    }
+    if (tray) togglePopup();
+  });
 
   // Register runway:// protocol so the browser extension can wake the app
   app.setAsDefaultProtocolClient('runway');
-  app.on('open-url', (event, _url) => {
+  app.on('open-url', (event, url) => {
     event.preventDefault();
-    if (tray) togglePopup();
+    if (url?.startsWith(CUSTOM_PROTOCOL)) revealRunway();
   });
+  shouldRevealOnReady = hasCustomProtocolArg(process.argv);
 
   createTray();
   ensureClaudeWindow();
@@ -878,9 +1015,15 @@ app.whenReady().then(() => {
   ensureGeminiWindow();
   startLocalServer();
 
+  if (shouldRevealOnReady) revealRunway();
+
   // Initial poll then schedule
   pollAll();
   schedulePoll();
+});
+
+app.on('activate', () => {
+  if (tray) revealRunway();
 });
 
 app.on('window-all-closed', (e) => {

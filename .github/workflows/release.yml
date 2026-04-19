@@ -11,6 +11,7 @@ permissions:
 jobs:
   release:
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-latest
@@ -33,13 +34,25 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and publish (${{ matrix.platform }})
+      - name: Build and publish (mac, unsigned)
+        if: matrix.platform == 'mac' && secrets.CSC_LINK == ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # macOS notarization (optional — leave blank to skip)
+        run: npm run build:mac -w apps/electron -- --publish always
+
+      - name: Build and publish (mac, signed)
+        if: matrix.platform == 'mac' && secrets.CSC_LINK != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APPLE_ID:             ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID:        ${{ secrets.APPLE_TEAM_ID }}
           CSC_LINK:             ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD:     ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run build:mac -w apps/electron -- --publish always
+
+      - name: Build and publish (${{ matrix.platform }})
+        if: matrix.platform != 'mac'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run build:${{ matrix.platform }} -w apps/electron -- --publish always

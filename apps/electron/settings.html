@@ -185,6 +185,18 @@
       min-height: 18px;
     }
     #status.error { color: #ff453a; }
+
+    .runtime-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: #1c2b1f;
+      color: #8ee59a;
+      font-size: 11px;
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -387,14 +399,18 @@
   </div>
 </section>
 
-<!-- Menu Bar -->
+<!-- Desktop -->
 <section>
   <div class="section-header">
-    <span class="section-title">Menu Bar</span>
+    <span class="section-title">Desktop</span>
   </div>
   <div class="section-body">
     <div class="field">
-      <label>Display Mode</label>
+      <label>Platform</label>
+      <div class="runtime-chip" id="platform-chip">Detecting…</div>
+    </div>
+    <div class="field">
+      <label>Tray Display Mode</label>
       <div class="radio-group">
         <label class="radio-option">
           <input type="radio" name="trayMode" value="compact" checked />
@@ -404,6 +420,18 @@
           <input type="radio" name="trayMode" value="verbose" />
           <span>Verbose — show utilization inline (e.g. <code>C:48%/12%  Cx:67%</code>)</span>
         </label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Startup</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="checkbox" id="openAtLogin" />
+          <span>Launch Runway when I sign in</span>
+        </label>
+      </div>
+      <div class="hint" id="startup-hint">
+        Runway can start in the background so your tray gauges are ready immediately.
       </div>
     </div>
     <div class="field">
@@ -508,7 +536,20 @@
   }
 
   // ── Load current config ────────────────────────────────────────────────────
-  window.runway.getConfig().then(config => {
+  Promise.all([window.runway.getConfig(), window.runway.getRuntimeInfo()]).then(([config, runtime]) => {
+    const platformChip = document.getElementById('platform-chip');
+    const startupCheckbox = document.getElementById('openAtLogin');
+    const startupHint = document.getElementById('startup-hint');
+
+    if (platformChip) platformChip.textContent = runtime.platformLabel;
+    if (startupCheckbox) {
+      startupCheckbox.checked = Boolean(config.openAtLogin ?? runtime.openAtLogin);
+      startupCheckbox.disabled = !runtime.supportsOpenAtLogin;
+    }
+    if (startupHint && !runtime.supportsOpenAtLogin) {
+      startupHint.textContent = 'Launch-on-login is currently wired up for macOS and Windows. Linux desktop autostart is next.';
+    }
+
     // Default values for new fields
     if (!config.geminiTelemetryPath) {
       config.geminiTelemetryPath = '~/.gemini/telemetry.json';
@@ -581,6 +622,7 @@
 
     const refreshRadio = document.querySelector('input[name="refreshInterval"]:checked');
     data.refreshInterval = refreshRadio ? Number(refreshRadio.value) : 300000;
+    data.openAtLogin = document.getElementById('openAtLogin')?.checked === true;
 
     try {
       await window.runway.saveConfig(data);
