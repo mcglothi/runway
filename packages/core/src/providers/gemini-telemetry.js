@@ -22,12 +22,33 @@ async function fetchQuota({ logContent, limit = 1500 }) {
 
   const objects = parseConcatenatedJson(logContent);
 
-  // Use local day boundary for daily quota
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const todaySeconds = Math.floor(today.getTime() / 1000);
+  // Find the latest timestamp in the file to establish "now"
+  let maxTs = 0;
+  for (const obj of objects) {
+    for (const sm of obj.scopeMetrics || []) {
+      for (const m of sm.metrics || []) {
+        for (const dp of m.dataPoints || []) {
+          const ts = Array.isArray(dp.startTime) ? dp.startTime[0] : dp.startTime;
+          if (ts > maxTs) maxTs = ts;
+        }
+      }
+    }
+  }
+
+  // If no timestamps found, fall back to system clock
+  const nowSeconds = maxTs || Math.floor(Date.now() / 1000);
+  // Boundary: 24 hours before the latest event
+  const windowStartSeconds = nowSeconds - (24 * 60 * 60);
+
+  // For the display reset time, use the day boundary of the latest event
+  const latestDate = new Date(nowSeconds * 1000);
+  const today = new Date(latestDate.getFullYear(), latestDate.getMonth(), latestDate.getDate());
+  const resetsAt = new Date(today);
+  resetsAt.setDate(resetsAt.getDate() + 1);
 
   let totalRequests = 0;
+  let flashRequests = 0;
+  let proRequests = 0;
 
   for (const obj of objects) {
     for (const sm of obj.scopeMetrics || []) {
@@ -38,8 +59,29 @@ async function fetchQuota({ logContent, limit = 1500 }) {
             const tsParts = dp.startTime;
             const ts = Array.isArray(tsParts) ? tsParts[0] : tsParts;
 
-            if (ts && ts >= todaySeconds) {
-              totalRequests += (dp.value || 0);
+            if (ts && ts >= windowStartSeconds) {
+              const val = (dp.value || 0);
+              totalRequests += val;
+              
+              // Attribute to model if possible (OTLP attributes object)
+              let modelName = '';
+              const attrs = dp.attributes || {};
+              
+              if (Array.isArray(attrs)) {
+                 const modelAttr = attrs.find(a => a.key === 'model' || a.key === 'model_name' || a.key === 'gen_ai.request.model');
+                 modelName = modelAttr?.value?.stringValue || '';
+              } else {
+                 modelName = attrs['model'] || attrs['model_name'] || attrs['gen_ai.request.model'] || '';
+              }
+
+              if (modelName.toLowerCase().includes('flash')) {
+                flashRequests += val;
+              } else if (modelName.toLowerCase().includes('pro')) {
+                proRequests += val;
+              } else {
+                // Default to pro as the bottleneck if unknown
+                proRequests += val;
+              }
             }
           }
         }
@@ -47,9 +89,18 @@ async function fetchQuota({ logContent, limit = 1500 }) {
     }
   }
 
-  const utilization = (totalRequests / limit) * 100;
-  const resetsAt = new Date(today);
-  resetsAt.setDate(resetsAt.getDate() + 1);
+  // Calculate utilization based on the most restrictive bottleneck
+  // (Usually Pro, but if they only use Flash, use that)
+  let utilization = 0;
+  let displayLimit = 1500;
+  
+  if (proRequests > 0 || (proRequests === 0 && flashRequests === 0)) {
+    utilization = (proRequests / 1500) * 100;
+    displayLimit = 1500;
+  } else {
+    utilization = (flashRequests / 1000000) * 100;
+    displayLimit = 1000000;
+  }
 
   return makeSnapshot('gemini', {
     short: {
@@ -59,9 +110,9 @@ async function fetchQuota({ logContent, limit = 1500 }) {
     },
     long: {
       utilization: null, // we only use this for the text label
-      text: `${totalRequests}/${limit}`,
+      text: `${totalRequests}/${displayLimit}`,
     },
-    raw: { totalRequests, limit, todaySeconds },
+    raw: { totalRequests, proRequests, flashRequests, limit: displayLimit, windowStartSeconds },
   });
 }
 
@@ -127,12 +178,13 @@ function parseConcatenatedJson(content) {
  * @param {number} resetMs
  */
 function estimateRunway(utilization, resetMs) {
-  if (utilization == null || utilization >= 100) return 0;
-  const remaining = 100 - utilization;
+  if (utilization == null) return 0;
   const msLeftInWindow = resetMs - Date.now();
   if (msLeftInWindow <= 0) return 0;
   if (utilization <= 0) return msLeftInWindow;
+  if (utilization >= 100) return 0;
 
+  const remaining = 100 - utilization;
   return Math.round((remaining / utilization) * (24 * 60 * 60 * 1000 - msLeftInWindow));
 }
 

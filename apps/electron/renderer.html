@@ -69,12 +69,53 @@
       transition: color 0.15s, background 0.15s;
     }
     .icon-btn:hover { color: #e5e5ea; background: rgba(255,255,255,0.08); }
+    .icon-btn.active { color: #0a84ff; }
 
     @keyframes spin { to { transform: rotate(360deg); } }
     .icon-btn.spinning { animation: spin 0.7s linear infinite; color: #636366; }
 
     #gauges {
       padding: 4px 0 2px;
+    }
+
+    #gauges.horizontal {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      padding: 10px 14px;
+      gap: 12px;
+    }
+
+    #gauges.horizontal .provider-sep {
+      display: none;
+    }
+
+    #gauges.horizontal .row {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 8px;
+      gap: 4px;
+      width: 110px;
+      background: rgba(255,255,255,0.03);
+      border-radius: 8px;
+    }
+
+    #gauges.horizontal .agent-label {
+      align-items: center;
+      text-align: center;
+    }
+
+    #gauges.horizontal .bar-track {
+      width: 100%;
+    }
+
+    #gauges.horizontal .pct {
+      text-align: center;
+    }
+
+    #gauges.horizontal .runway-col {
+      text-align: center;
     }
 
     .provider-sep {
@@ -248,6 +289,7 @@
     <span>Runway</span>
   </div>
   <div id="header-right">
+    <button class="icon-btn" id="btn-pin" title="Pin to top">📌</button>
     <button class="icon-btn" id="btn-refresh" title="Refresh now">↻</button>
     <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
   </div>
@@ -337,8 +379,26 @@
   }
 
   // ── Render ────────────────────────────────────────────────────────────────────
+  async function updateOrientation() {
+    const config = await window.runway.getConfig();
+    const gauges = document.getElementById('gauges');
+    if (config.orientation === 'horizontal') {
+      gauges.classList.add('horizontal');
+    } else {
+      gauges.classList.remove('horizontal');
+    }
+    
+    const pinBtn = document.getElementById('btn-pin');
+    if (config.pinned !== false) {
+      pinBtn.classList.add('active');
+    } else {
+      pinBtn.classList.remove('active');
+    }
+  }
+
   function render(snapshots) {
     const gauges = document.getElementById('gauges');
+    updateOrientation();
 
     if (Object.keys(snapshots).length === 0) {
       gauges.innerHTML = `<div id="not-configured">
@@ -539,6 +599,12 @@
   setInterval(updateFooter, 15000);
 
   // ── Init ──────────────────────────────────────────────────────────────────────
+  document.getElementById('btn-pin').addEventListener('click', async () => {
+    const { pinned } = await window.runway.togglePin();
+    const btn = document.getElementById('btn-pin');
+    btn.classList.toggle('active', pinned);
+  });
+
   document.getElementById('btn-refresh').addEventListener('click', async () => {
     const btn = document.getElementById('btn-refresh');
     btn.classList.add('spinning');

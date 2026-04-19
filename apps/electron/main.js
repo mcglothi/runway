@@ -33,6 +33,7 @@ let geminiWin = null;    // hidden BrowserWindow — Google AI Studio session
 let settingsWin = null;
 let snapshots = {};     // latest QuotaSnapshot per agent
 let pollTimer = null;
+let isPolling = false;  // Guard against overlapping polls
 let claudeOrgId = null; // cached to avoid re-resolving every poll
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -193,6 +194,7 @@ function ensureClaudeWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:claude', // dedicated session so cookies persist
+      backgroundThrottling: true,
     },
   });
 
@@ -233,6 +235,7 @@ function ensureChatGptWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:chatgpt', // separate session so cookies persist
+      backgroundThrottling: true,
     },
   });
 
@@ -283,6 +286,7 @@ function ensureGeminiWindow() {
       nodeIntegration: false,
       contextIsolation: true,
       partition: 'persist:gemini',
+      backgroundThrottling: true,
     },
   });
 
@@ -317,8 +321,15 @@ function ensureGeminiWindow() {
                     const data = JSON.parse(body);
                     console.log(`[runway:gemini:discovery] Captured valid JSON from ${url}`);
                     global.latestGeminiUsage = data;
-                    // Trigger a re-poll if we found new data
-                    pollAll();
+                    
+                    // Direct snapshot update instead of global pollAll() to avoid thundering herd/loops
+                    const { gemini } = require('@runway/core');
+                    const snap = await gemini.fetchQuota({ apiKey: null, fetchFn: async () => data, mode: 'pro' });
+                    if (snap) {
+                      snapshots['gemini'] = snap;
+                      updateTrayTitle();
+                      pushToPopup();
+                    }
                   } catch (e) {
                     // Not valid JSON, skip
                   }
@@ -394,51 +405,68 @@ function isEnabled(config, provider) {
 
 // ── Poll all providers ────────────────────────────────────────────────────────
 async function pollAll() {
-  const config = loadConfig();
-  
-  // Pre-initialize snapshots for all enabled providers so they show up in the UI immediately
-  const { makeSnapshot } = require('@runway/core');
-  for (const name of PROVIDER_ORDER) {
-    if (isEnabled(config, name)) {
-      if (!snapshots[name]) {
-        snapshots[name] = makeSnapshot(name);
+  if (isPolling) return;
+  isPolling = true;
+
+  try {
+    const config = loadConfig();
+    
+    // Pre-initialize snapshots for all enabled providers
+    const { makeSnapshot } = require('@runway/core');
+    for (const name of PROVIDER_ORDER) {
+      if (isEnabled(config, name)) {
+        if (!snapshots[name]) {
+          snapshots[name] = makeSnapshot(name);
+        }
+      } else {
+        delete snapshots[name];
       }
-    } else {
-      delete snapshots[name];
     }
-  }
-  pushToPopup();
-  updateTrayTitle();
+    pushToPopup();
+    updateTrayTitle();
 
-  const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
-  const results = await Promise.allSettled([
-    tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
-    tag('codex',   isEnabled(config, 'codex')   ? pollCodex(config)   : Promise.resolve(null)),
-    tag('copilot', isEnabled(config, 'copilot') ? pollCopilot(config) : Promise.resolve(null)),
-    tag('gemini',  isEnabled(config, 'gemini')  ? pollGemini(config)  : Promise.resolve(null)),
-  ]);
+    const tag = (name, p) => p.catch(e => { e.provider = name; throw e; });
+    const results = await Promise.allSettled([
+      tag('claude',  isEnabled(config, 'claude')  ? pollClaude(config)  : Promise.resolve(null)),
+      tag('codex',   isEnabled(config, 'codex')   ? pollCodex(config)   : Promise.resolve(null)),
+      tag('copilot', isEnabled(config, 'copilot') ? pollCopilot(config) : Promise.resolve(null)),
+      tag('gemini',  isEnabled(config, 'gemini')  ? pollGemini(config)  : Promise.resolve(null)),
+    ]);
 
-  for (const r of results) {
-    if (r.status === 'fulfilled') {
-      const snap = r.value;
-      if (snap) {
-        snapshots[snap.agent] = snap;
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        const snap = r.value;
+        if (snap) {
+          snapshots[snap.agent] = snap;
+        }
+      } else if (r.status === 'rejected') {
+        const idx = results.indexOf(r);
+        const name = PROVIDER_ORDER[idx] || 'unknown';
+        console.error(`[runway:${name}] poll error:`, r.reason?.message ?? r.reason);
       }
-    } else if (r.status === 'rejected') {
-      const idx = results.indexOf(r);
-      const name = PROVIDER_ORDER[idx] || 'unknown';
-      console.error(`[runway:${name}] poll error:`, r.reason?.message ?? r.reason);
     }
-  }
 
-  resizePopup();
-  updateTrayTitle();
-  pushToPopup();
-  maybeWriteToAikb();
+    resizePopup();
+    updateTrayTitle();
+    pushToPopup();
+    maybeWriteToAikb();
+  } finally {
+    isPolling = false;
+  }
 }
 
 function resizePopup() {
   if (!popupWin || popupWin.isDestroyed()) return;
+  const config = loadConfig();
+  const orientation = config.orientation || 'vertical';
+  
+  if (orientation === 'horizontal') {
+    const activeCount = Object.keys(snapshots).length;
+    const width = Math.max(POPUP_WIDTH, activeCount * 120 + 40);
+    popupWin.setSize(width, 140);
+    return;
+  }
+
   let rows = 0;
   let anyNoData = false;
   for (const [, snap] of Object.entries(snapshots)) {
@@ -692,13 +720,14 @@ function maybeWriteToAikb() {
 
 // ── Popup window ──────────────────────────────────────────────────────────────
 function createPopupWindow() {
+  const config = loadConfig();
   popupWin = new BrowserWindow({
     width: POPUP_WIDTH,
     height: POPUP_CHROME + POPUP_ROW_HEIGHT, // initial: 1 row, resized after first poll
     show: false,
     frame: false,
-    resizable: false,
-    alwaysOnTop: true,
+    resizable: true,
+    alwaysOnTop: config.pinned !== false,
     skipTaskbar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -814,7 +843,7 @@ function createTray() {
     { type: 'separator' },
     { label: 'Quit Runway', click: () => app.quit() },
   ]);
-  tray.setContextMenu(trayMenu);
+  // tray.setContextMenu(trayMenu); // REMOVED to avoid double-overlap on click
 
   // Left click → toggle popup
   tray.on('click', togglePopup);
@@ -839,6 +868,15 @@ ipcMain.handle('save-config', (_e, data) => {
   return { ok: true };
 });
 ipcMain.handle('open-settings', openSettings);
+ipcMain.handle('toggle-pin', () => {
+  const config = loadConfig();
+  const pinned = !(config.pinned !== false);
+  saveConfig({ pinned });
+  if (popupWin && !popupWin.isDestroyed()) {
+    popupWin.setAlwaysOnTop(pinned);
+  }
+  return { pinned };
+});
 ipcMain.handle('open-claude',    () => shell.openExternal('https://claude.ai'));
 ipcMain.handle('open-external', (_e, url) => shell.openExternal(url));
 ipcMain.handle('refresh', () => pollAll());
@@ -1010,9 +1048,12 @@ app.whenReady().then(() => {
   shouldRevealOnReady = hasCustomProtocolArg(process.argv);
 
   createTray();
-  ensureClaudeWindow();
-  ensureChatGptWindow();
-  ensureGeminiWindow();
+
+  const config = loadConfig();
+  if (isEnabled(config, 'claude'))  ensureClaudeWindow();
+  if (isEnabled(config, 'codex'))   ensureChatGptWindow();
+  if (isEnabled(config, 'gemini'))  ensureGeminiWindow();
+
   startLocalServer();
 
   if (shouldRevealOnReady) revealRunway();

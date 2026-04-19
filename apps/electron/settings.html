@@ -429,9 +429,26 @@
           <input type="checkbox" id="openAtLogin" />
           <span>Launch Runway when I sign in</span>
         </label>
+        <label class="radio-option">
+          <input type="checkbox" id="pinned" />
+          <span>Keep window always on top (Pinned)</span>
+        </label>
       </div>
       <div class="hint" id="startup-hint">
         Runway can start in the background so your tray gauges are ready immediately.
+      </div>
+    </div>
+    <div class="field">
+      <label>Orientation</label>
+      <div class="radio-group">
+        <label class="radio-option">
+          <input type="radio" name="orientation" value="vertical" checked />
+          <span>Vertical (Standard)</span>
+        </label>
+        <label class="radio-option">
+          <input type="radio" name="orientation" value="horizontal" />
+          <span>Horizontal (Wide)</span>
+        </label>
       </div>
     </div>
     <div class="field">
@@ -472,6 +489,23 @@
       <label for="aikbEventsDir">Events Directory</label>
       <input type="text" id="aikbEventsDir" placeholder="/path/to/AIKB/_runtime/events" autocomplete="off" />
       <div class="hint">If set, quota snapshots are appended to your AIKB runtime event log after each poll.</div>
+    </div>
+  </div>
+</section>
+
+<!-- Maintenance -->
+<section>
+  <div class="section-header">
+    <span class="section-title">Maintenance</span>
+  </div>
+  <div class="section-body">
+    <div class="field">
+      <div class="row-actions" style="margin-top: 0; flex-wrap: wrap;">
+        <button id="btn-refresh-now" style="background: #3a3a3c; color: #fff;">Refresh All Now</button>
+        <button id="btn-login-claude" style="background: #3a3a3c; color: #fff;">Login to Claude</button>
+        <button id="btn-login-chatgpt" style="background: #3a3a3c; color: #fff;">Login to ChatGPT</button>
+        <button id="btn-login-gemini" style="background: #3a3a3c; color: #fff;">Login to Gemini</button>
+      </div>
     </div>
   </div>
 </section>
@@ -546,6 +580,11 @@
       startupCheckbox.checked = Boolean(config.openAtLogin ?? runtime.openAtLogin);
       startupCheckbox.disabled = !runtime.supportsOpenAtLogin;
     }
+    const pinnedCheckbox = document.getElementById('pinned');
+    if (pinnedCheckbox) {
+      pinnedCheckbox.checked = config.pinned !== false;
+    }
+
     if (startupHint && !runtime.supportsOpenAtLogin) {
       startupHint.textContent = 'Launch-on-login is currently wired up for macOS and Windows. Linux desktop autostart is next.';
     }
@@ -581,10 +620,31 @@
     const trayRadio = document.querySelector(`input[name="trayMode"][value="${trayMode}"]`);
     if (trayRadio) trayRadio.checked = true;
 
+    // Orientation
+    const orientation = config.orientation ?? 'vertical';
+    const orientationRadio = document.querySelector(`input[name="orientation"][value="${orientation}"]`);
+    if (orientationRadio) orientationRadio.checked = true;
+
     // Refresh interval
     const interval = config.refreshInterval ?? 300000;
     const intervalRadio = document.querySelector(`input[name="refreshInterval"][value="${interval}"]`);
     if (intervalRadio) intervalRadio.checked = true;
+  });
+
+  // ── Maintenance buttons ────────────────────────────────────────────────────
+  document.getElementById('btn-refresh-now')?.addEventListener('click', async () => {
+    setStatus('Refreshing...');
+    await window.runway.refresh();
+    setStatus('Refreshed!');
+  });
+  document.getElementById('btn-login-claude')?.addEventListener('click', () => {
+    window.runway.openClaude();
+  });
+  document.getElementById('btn-login-chatgpt')?.addEventListener('click', () => {
+    window.runway.openChatGptLogin();
+  });
+  document.getElementById('btn-login-gemini')?.addEventListener('click', () => {
+    window.runway.openGeminiLogin();
   });
 
   // ── Link handlers ──────────────────────────────────────────────────────────
@@ -620,9 +680,13 @@
     const trayModeRadio = document.querySelector('input[name="trayMode"]:checked');
     data.trayMode = trayModeRadio?.value ?? 'compact';
 
+    const orientationRadio = document.querySelector('input[name="orientation"]:checked');
+    data.orientation = orientationRadio?.value ?? 'vertical';
+
     const refreshRadio = document.querySelector('input[name="refreshInterval"]:checked');
     data.refreshInterval = refreshRadio ? Number(refreshRadio.value) : 300000;
     data.openAtLogin = document.getElementById('openAtLogin')?.checked === true;
+    data.pinned = document.getElementById('pinned')?.checked === true;
 
     try {
       await window.runway.saveConfig(data);

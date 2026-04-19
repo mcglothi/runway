@@ -40,6 +40,7 @@ async function fetchQuota({ apiKey, fetchFn, mode = 'pro' }) {
           let limit = 1500; // default Pro plan (1500 RPD)
 
           if (data.limits && data.usage) {
+            console.log('Runway: Gemini debug usage[0].model:', data.usage[0]?.model);
             // Priority 1: Match 'pro' specifically for 1.5 Pro limit (1500)
             // Priority 2: Match 'flash' for 1.5 Flash limit (1M)
             const flashUsage = data.usage.find(u => u.model?.includes('flash'));
