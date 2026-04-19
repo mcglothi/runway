@@ -5,3 +5,5 @@ dist/
 .DS_Store
 apps/electron/out/
 apps/extension/dist/
+apps/electron/build-assets/icon-1024.png
+apps/electron/build-assets/icons.iconset/

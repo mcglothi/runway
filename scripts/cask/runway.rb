@@ -1,7 +1,8 @@
 cask "runway" do
   version "0.1.0"
 
-  # Update these after each release (run: shasum -a 256 Runway-VERSION-arm64.dmg)
+  # Template only. Generate a release-ready cask with:
+  # bash scripts/generate-homebrew-cask.sh --arm64 <path> --x64 <path>
   if Hardware::CPU.arm?
     sha256 "REPLACE_WITH_ARM64_SHA256"
     url "https://github.com/mcglothi/runway/releases/download/v#{version}/Runway-#{version}-arm64.dmg"

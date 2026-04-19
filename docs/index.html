@@ -64,14 +64,21 @@ section{max-width:900px;margin:0 auto;padding:3.5rem 2rem}
 .service-detail{font-size:0.75rem;color:var(--muted)}
 
 .install-block{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.install-status{display:flex;flex-wrap:wrap;gap:0.65rem;margin:-0.5rem 0 1.25rem}
+.install-badge{display:inline-flex;align-items:center;gap:0.45rem;padding:0.35rem 0.7rem;border-radius:999px;border:1px solid var(--border2);font-size:0.72rem;font-weight:700;letter-spacing:0.02em}
+.install-badge.live{color:var(--green);background:var(--green-d);border-color:rgba(61,214,140,0.25)}
+.install-badge.planned{color:var(--amber);background:var(--amber-d);border-color:rgba(240,180,41,0.25)}
 .install-tabs{display:flex;border-bottom:1px solid var(--border);background:var(--surface)}
 .install-tab{padding:0.55rem 1rem;font-size:0.78rem;font-weight:600;color:var(--muted);cursor:pointer;border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .12s}
 .install-tab.active{color:var(--amber);border-bottom-color:var(--amber)}
 .install-panel{display:none;padding:1.1rem 1.25rem}
 .install-panel.active{display:block}
 .install-cmd{font-family:monospace;font-size:0.83rem;color:var(--green);white-space:pre;overflow-x:auto}
+.install-panel-title{font-size:0.82rem;font-weight:700;color:#fff;margin-bottom:0.55rem}
 .install-meta{display:flex;align-items:center;justify-content:space-between;margin-top:0.75rem;flex-wrap:wrap;gap:0.5rem}
 .install-note{font-size:0.72rem;color:var(--dim)}
+.install-subnote{margin-top:1rem;padding-top:0.95rem;border-top:1px solid var(--border);font-size:0.78rem;color:var(--muted);line-height:1.6}
+.install-subnote code{color:var(--text)}
 .copy-btn{padding:0.35rem 0.7rem;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--muted);font-size:0.72rem;cursor:pointer;transition:border-color .12s,color .12s}
 .copy-btn:hover{border-color:var(--amber);color:var(--amber)}
 .copy-btn.copied{border-color:var(--green);color:var(--green)}
@@ -192,7 +199,12 @@ footer a:hover{color:var(--muted)}
 <section id="install">
   <div class="section-label">Install</div>
   <div class="section-title">Get Runway</div>
-  <p class="section-sub">Desktop builds are available for macOS, Windows, and Linux. Install a release for your platform or build from source with Node.js.</p>
+  <p class="section-sub">The clean install path today is cloning the repo and building for your platform. Direct GitHub downloads and a Homebrew cask are planned, but they are not published yet.</p>
+  <div class="install-status">
+    <span class="install-badge live">Available now: source build</span>
+    <span class="install-badge planned">Planned: GitHub Releases</span>
+    <span class="install-badge planned">Planned: Homebrew cask</span>
+  </div>
   <div class="install-block">
     <div class="install-tabs">
       <button class="install-tab active" onclick="showTab('mac',this)">macOS</button>
@@ -201,27 +213,43 @@ footer a:hover{color:var(--muted)}
       <button class="install-tab" onclick="showTab('source',this)">From source</button>
     </div>
     <div class="install-panel active" id="tab-mac">
-      <div class="install-cmd">Download runway-&lt;version&gt;-arm64.dmg from Releases</div>
+      <div class="install-panel-title">Build a local macOS app bundle</div>
+      <div class="install-cmd" id="cmd-mac">git clone https://github.com/mcglothi/runway.git
+cd runway
+npm install
+npm run build:mac</div>
       <div class="install-meta">
-        <span class="install-note">DMG + ZIP artifacts for Apple Silicon and Intel. Homebrew cask is also available.</span>
-        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
+        <span class="install-note">Builds a local DMG for Apple Silicon or Intel, depending on the Mac you build on.</span>
+        <button class="copy-btn" onclick="copyCmd('cmd-mac',this)">Copy</button>
       </div>
+      <div class="install-subnote">Homebrew will be the cleanest macOS install once release artifacts exist. Until then, <code>brew</code> would just be wrapping a missing download.</div>
     </div>
     <div class="install-panel" id="tab-win">
-      <div class="install-cmd">Download Runway Setup &lt;version&gt;.exe from Releases</div>
+      <div class="install-panel-title">Build a local Windows installer</div>
+      <div class="install-cmd" id="cmd-win">git clone https://github.com/mcglothi/runway.git
+cd runway
+npm install
+npm run build:win</div>
       <div class="install-meta">
-        <span class="install-note">NSIS installer for Windows 10/11</span>
-        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
+        <span class="install-note">Builds a local NSIS installer for Windows.</span>
+        <button class="copy-btn" onclick="copyCmd('cmd-win',this)">Copy</button>
       </div>
+      <div class="install-subnote">Published Windows installers will land through GitHub Releases once the release pipeline has shipped its first tagged build.</div>
     </div>
     <div class="install-panel" id="tab-linux">
-      <div class="install-cmd">Download runway-&lt;version&gt;-x86_64.AppImage or .deb from Releases</div>
+      <div class="install-panel-title">Build local Linux packages</div>
+      <div class="install-cmd" id="cmd-linux">git clone https://github.com/mcglothi/runway.git
+cd runway
+npm install
+npm run build:linux</div>
       <div class="install-meta">
-        <span class="install-note">Portable AppImage plus Debian package</span>
-        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
+        <span class="install-note">Builds a local AppImage and Debian package.</span>
+        <button class="copy-btn" onclick="copyCmd('cmd-linux',this)">Copy</button>
       </div>
+      <div class="install-subnote">If you just want to try Runway today, this is the fastest Linux path while packaged downloads are still pending.</div>
     </div>
     <div class="install-panel" id="tab-source">
+      <div class="install-panel-title">Build the current platform package</div>
       <div class="install-cmd" id="cmd-source">git clone https://github.com/mcglothi/runway.git
 cd runway
 npm install

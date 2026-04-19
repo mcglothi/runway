@@ -11,8 +11,12 @@
     "dev:electron": "npm -w apps/electron run dev",
     "dev:extension": "npm -w apps/extension run dev",
     "build:electron": "npm -w apps/electron run build",
+    "build:mac": "npm -w apps/electron run build:mac",
+    "build:linux": "npm -w apps/electron run build:linux",
+    "build:win": "npm -w apps/electron run build:win",
     "build:extension": "npm -w apps/extension run build",
-    "build:core": "npm -w packages/core run build"
+    "build:core": "npm -w packages/core run build",
+    "dist:homebrew-cask": "bash scripts/generate-homebrew-cask.sh"
   },
   "license": "MIT"
 }

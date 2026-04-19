@@ -77,6 +77,7 @@ Runway fixes that. It's a system tray widget and browser extension that tracks q
 | Enterprise telemetry ingest | 🔨 Prototype | GitHub Copilot 28-day metrics reports |
 | Dynamic limit tracking | 🔨 Prototype | Detect when your limit changes day-to-day |
 | AIKB event log integration | 🔨 Prototype | Snapshots to `_runtime/events/` NDJSON |
+| Launch on login | 🔨 Prototype | macOS, Windows, and packaged Linux desktop autostart |
 | Agent self-awareness API | 🔬 Research | Agents query their own headroom |
 | Cross-agent handoff protocol | 🔬 Research | Route tasks to the agent with most runway |
 | Gemini quota shim | 🔬 Research | Intercept local CLI calls |
@@ -116,6 +117,14 @@ Both consume `@runway/core`. Write the provider once, deploy to both.
 
 **Prerequisites:** Node.js 20+, npm 10+
 
+**Install status**
+
+- Available now: clone the repo and build locally for macOS, Windows, or Linux
+- Planned: GitHub Releases with downloadable installers
+- Planned: Homebrew cask for macOS after release artifacts are live
+
+Release and Homebrew details live in [docs/distribution.md](docs/distribution.md).
+
 **1. Clone and install**
 
 ```bash
@@ -151,7 +160,33 @@ GITHUB_ENTERPRISE_SLUG=your-enterprise
 npm run dev:electron
 ```
 
-**4. Install the browser extension (Chrome)**
+**4. Build desktop installers**
+
+```bash
+# Current platform package
+npm run build:electron
+
+# Or target a specific desktop OS
+npm run build:mac
+npm run build:linux
+npm run build:win
+```
+
+If you update the desktop icon artwork, regenerate the packaged assets with:
+
+```bash
+bash scripts/build-electron-icons.sh
+```
+
+After release DMGs exist, generate the Homebrew cask with:
+
+```bash
+npm run dist:homebrew-cask -- \
+  --arm64 dist/Runway-0.1.0-arm64.dmg \
+  --x64 dist/Runway-0.1.0-x64.dmg
+```
+
+**5. Install the browser extension (Chrome)**
 
 1. Open `chrome://extensions`
 2. Enable **Developer mode**
@@ -199,7 +234,7 @@ Once enabled, agents can query their status via AIKB search:
 - [ ] Local LLM support (Ollama)
 - [ ] Homebrew distribution formula
 - [ ] Configurable auto-refresh intervals (15s–1hr)
-- [ ] Cross-platform installers (Linux/Windows)
+- [x] Cross-platform desktop packaging (macOS, Linux, Windows)
 
 - [ ] Per-device breakdown — see which machine is consuming your quota
 
