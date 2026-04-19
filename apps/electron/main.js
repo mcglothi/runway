@@ -61,9 +61,18 @@ function createGeneratedTrayIcon() {
   const size = process.platform === 'win32' ? 32 : 18;
   const svg = `
     <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 18 18">
-      <rect x="1" y="1" width="16" height="16" rx="4" fill="#111827" />
-      <path d="M4 12.5h2.2L8.5 5.5H10l2.1 7h1.9" fill="none" stroke="#f59e0b" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
-      <circle cx="12.8" cy="12.4" r="1.3" fill="#60a5fa" />
+      <defs>
+        <linearGradient id="icon-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#00C2FF" />
+          <stop offset="100%" stop-color="#6E40C9" />
+        </linearGradient>
+      </defs>
+      <rect x="1" y="1" width="16" height="16" rx="4.5" fill="#0F172A" />
+      <path d="M4.5 13.5l3-9 3 9" fill="none" stroke="url(#icon-grad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7 9.5h2" fill="none" stroke="url(#icon-grad)" stroke-width="1.8" stroke-linecap="round"/>
+      <circle cx="13.5" cy="4.5" r="1.2" fill="#00C2FF">
+        <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite" />
+      </circle>
     </svg>
   `;
   let icon = nativeImage.createFromDataURL(svgToDataUrl(svg));
@@ -80,7 +89,10 @@ function loadTrayIcon() {
     if (!fs.existsSync(iconPath)) continue;
     let icon = nativeImage.createFromPath(iconPath);
     if (!icon.isEmpty()) {
-      if (process.platform === 'darwin') icon = icon.resize({ width: 16, height: 16 });
+      if (process.platform === 'darwin') {
+        icon = icon.resize({ width: 16, height: 16 });
+        icon.setTemplateImage(true);
+      }
       return icon;
     }
   }
@@ -836,6 +848,13 @@ function createTray() {
   tray.setToolTip('Runway — AI quota tracker');
   trayMenu = Menu.buildFromTemplate([
     { label: 'Refresh Now', click: () => pollAll() },
+    { label: 'Hard Refresh…', click: () => {
+      // Force recreation of all hidden windows
+      if (claudeWin)  { claudeWin.destroy();  claudeWin = null; }
+      if (chatgptWin) { chatgptWin.destroy(); chatgptWin = null; }
+      if (geminiWin)  { geminiWin.destroy();  geminiWin = null; }
+      pollAll();
+    } },
     { label: 'Settings…', click: openSettings },
     { type: 'separator' },
     { label: 'Login to Claude…', click: () => shell.openExternal('https://claude.ai') },
@@ -851,7 +870,7 @@ function createTray() {
       win.once('closed', () => pollAll());
     } },
     { type: 'separator' },
-    { label: 'Quit Runway', click: () => app.quit() },
+    { label: 'Quit Runway', click: () => app.exit(0) },
   ]);
   // tray.setContextMenu(trayMenu); // REMOVED to avoid double-overlap on click
 
@@ -870,6 +889,7 @@ ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('get-runtime-info', () => getRuntimeInfo());
 ipcMain.handle('save-config', (_e, data) => {
   saveConfig(data);
+  if (tray) tray.setImage(loadTrayIcon());
   if ('openAtLogin' in data) applyOpenAtLogin(data.openAtLogin);
   // Clear snapshots so disabled providers disappear immediately from the gauge
   snapshots = {};

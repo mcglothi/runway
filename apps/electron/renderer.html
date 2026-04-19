@@ -38,17 +38,29 @@
     }
 
     .runway-mark {
-      width: 20px;
-      height: 20px;
-      background: linear-gradient(135deg, #0a84ff 0%, #6e40c9 100%);
-      border-radius: 5px;
+      width: 22px;
+      height: 22px;
+      background: #0F172A;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 6px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 11px;
-      font-weight: 800;
-      color: white;
       flex-shrink: 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .runway-mark::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(0,194,255,0.15) 0%, rgba(110,64,201,0.15) 100%);
+    }
+    .runway-mark-inner {
+      width: 12px;
+      height: 12px;
+      position: relative;
+      z-index: 1;
     }
 
     #header-right {
@@ -94,11 +106,16 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 8px;
-      gap: 4px;
-      width: 110px;
+      padding: 10px 8px;
+      gap: 6px;
+      width: 105px;
       background: rgba(255,255,255,0.03);
-      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 10px;
+    }
+
+    #gauges.horizontal .provider-icon {
+      margin-bottom: 2px;
     }
 
     #gauges.horizontal .agent-label {
@@ -108,14 +125,18 @@
 
     #gauges.horizontal .bar-track {
       width: 100%;
+      height: 4px;
     }
 
     #gauges.horizontal .pct {
       text-align: center;
+      width: 100%;
     }
 
     #gauges.horizontal .runway-col {
       text-align: center;
+      width: 100%;
+      font-size: 10px;
     }
 
     .provider-sep {
@@ -285,7 +306,18 @@
 
 <div id="header">
   <div id="header-left">
-    <div class="runway-mark">R</div>
+    <div class="runway-mark">
+      <svg class="runway-mark-inner" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 10L6 3L9 10" stroke="url(#mark-grad)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M4.5 7h3" stroke="url(#mark-grad)" stroke-width="1.8" stroke-linecap="round"/>
+        <defs>
+          <linearGradient id="mark-grad" x1="0" y1="0" x2="12" y2="12" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#00C2FF"/>
+            <stop offset="1" stop-color="#6E40C9"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
     <span>Runway</span>
   </div>
   <div id="header-right">
@@ -327,9 +359,9 @@
     },
     gemini: {
       name: 'Gemini',
-      // 4-pointed star / sparkle — matches the Gemini logo shape
+      // 4-pointed star / sparkle — matches the Gemini logo shape (now in brand blue)
       icon: `<svg viewBox="0 0 16 16" fill="none" width="16" height="16" xmlns="http://www.w3.org/2000/svg">
-        <path d="M8 1C8 1 8.65 5.8 11.2 8C8.65 10.2 8 15 8 15C8 15 7.35 10.2 4.8 8C7.35 5.8 8 1 8 1Z" fill="#4285F4"/>
+        <path d="M8 1C8 1 8.65 5.8 11.2 8C8.65 10.2 8 15 8 15C8 15 7.35 10.2 4.8 8C7.35 5.8 8 1 8 1Z" fill="#8EBBFF"/>
         <path d="M1 8C1 8 5.8 8.65 8 11.2C10.2 8.65 15 8 15 8C15 8 10.2 7.35 8 4.8C5.8 7.35 1 8 1 8Z" fill="#4285F4"/>
       </svg>`,
     },
@@ -391,8 +423,10 @@
     const pinBtn = document.getElementById('btn-pin');
     if (config.pinned !== false) {
       pinBtn.classList.add('active');
+      pinBtn.textContent = '📌';
     } else {
       pinBtn.classList.remove('active');
+      pinBtn.textContent = '📍';
     }
   }
 
@@ -603,6 +637,7 @@
     const { pinned } = await window.runway.togglePin();
     const btn = document.getElementById('btn-pin');
     btn.classList.toggle('active', pinned);
+    btn.textContent = pinned ? '📌' : '📍';
   });
 
   document.getElementById('btn-refresh').addEventListener('click', async () => {
