@@ -97,11 +97,11 @@ footer a:hover{color:var(--muted)}
 </nav>
 
 <div class="hero">
-  <span class="hero-eyebrow">📊 macOS · Menu bar · Always visible</span>
+  <span class="hero-eyebrow">📊 Tray app · macOS · Windows · Linux</span>
   <h1>Know your <em>runway</em><br>before you hit the wall</h1>
   <p class="hero-sub">
     Real-time quota burn tracker for Claude, Codex, Gemini, and Copilot.
-    Lives in your menu bar. Shows current burn rate and time-to-limit
+    Lives in your system tray. Shows current burn rate and time-to-limit
     across all your AI services at a glance.
   </p>
   <div class="hero-actions">
@@ -146,8 +146,8 @@ footer a:hover{color:var(--muted)}
     </div>
     <div class="feature-card">
       <div class="feature-icon">📌</div>
-      <div class="feature-name">Always-visible menu bar</div>
-      <div class="feature-desc">Electron menu-bar app. No browser tab to forget. Quota state visible the moment you glance up.</div>
+      <div class="feature-name">Always-visible tray app</div>
+      <div class="feature-desc">Electron desktop app for macOS, Windows, and Linux. No browser tab to forget. Quota state visible the moment you glance up.</div>
     </div>
     <div class="feature-card">
       <div class="feature-icon">🔄</div>
@@ -192,32 +192,42 @@ footer a:hover{color:var(--muted)}
 <section id="install">
   <div class="section-label">Install</div>
   <div class="section-title">Get Runway</div>
-  <p class="section-sub">macOS only. Requires Node.js for building from source, or download the pre-built release.</p>
+  <p class="section-sub">Desktop builds are available for macOS, Windows, and Linux. Install a release for your platform or build from source with Node.js.</p>
   <div class="install-block">
     <div class="install-tabs">
-      <button class="install-tab active" onclick="showTab('dmg',this)">Release .dmg</button>
-      <button class="install-tab" onclick="showTab('homebrew',this)">Homebrew</button>
+      <button class="install-tab active" onclick="showTab('mac',this)">macOS</button>
+      <button class="install-tab" onclick="showTab('win',this)">Windows</button>
+      <button class="install-tab" onclick="showTab('linux',this)">Linux</button>
       <button class="install-tab" onclick="showTab('source',this)">From source</button>
     </div>
-    <div class="install-panel active" id="tab-dmg">
+    <div class="install-panel active" id="tab-mac">
       <div class="install-cmd">Download runway-&lt;version&gt;-arm64.dmg from Releases</div>
       <div class="install-meta">
-        <span class="install-note">Universal binary — Apple Silicon and Intel</span>
+        <span class="install-note">DMG + ZIP artifacts for Apple Silicon and Intel. Homebrew cask is also available.</span>
         <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
       </div>
     </div>
-    <div class="install-panel" id="tab-homebrew">
-      <div class="install-cmd" id="cmd-brew">brew install --cask mcglothi/tap/runway</div>
+    <div class="install-panel" id="tab-win">
+      <div class="install-cmd">Download Runway Setup &lt;version&gt;.exe from Releases</div>
       <div class="install-meta">
-        <span class="install-note">Homebrew cask — updates via brew upgrade</span>
-        <button class="copy-btn" onclick="copyCmd('cmd-brew',this)">Copy</button>
+        <span class="install-note">NSIS installer for Windows 10/11</span>
+        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
+      </div>
+    </div>
+    <div class="install-panel" id="tab-linux">
+      <div class="install-cmd">Download runway-&lt;version&gt;-x86_64.AppImage or .deb from Releases</div>
+      <div class="install-meta">
+        <span class="install-note">Portable AppImage plus Debian package</span>
+        <a href="https://github.com/mcglothi/runway/releases" target="_blank" class="copy-btn">Releases →</a>
       </div>
     </div>
     <div class="install-panel" id="tab-source">
       <div class="install-cmd" id="cmd-source">git clone https://github.com/mcglothi/runway.git
-cd runway && npm install && npm run build</div>
+cd runway
+npm install
+npm run build:electron</div>
       <div class="install-meta">
-        <span class="install-note">Requires Node.js 18+</span>
+        <span class="install-note">Requires Node.js 20+</span>
         <button class="copy-btn" onclick="copyCmd('cmd-source',this)">Copy</button>
       </div>
     </div>
