@@ -16,5 +16,7 @@ contextBridge.exposeInMainWorld('runway', {
   openExternal:  (url)     => ipcRenderer.invoke('open-external', url),
   refresh:       ()        => ipcRenderer.invoke('refresh'),
   onSnapshots:   (fn)      => ipcRenderer.on('snapshots', (_e, data) => fn(data)),
-  getTierOptions: (agent)  => ipcRenderer.invoke('get-tier-options', agent),
+  getTierOptions:  (agent)  => ipcRenderer.invoke('get-tier-options', agent),
+  getUpdateInfo:   ()       => ipcRenderer.invoke('get-update-info'),
+  onUpdateInfo:    (fn)     => ipcRenderer.on('update-info', (_e, data) => fn(data)),
 });

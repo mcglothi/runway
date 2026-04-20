@@ -36,13 +36,17 @@ let pollTimer = null;
 let isPolling = false;  // Guard against overlapping polls
 let claudeOrgId = null; // cached to avoid re-resolving every poll
 let lastAikbWriteMs = 0; // rate-limit AIKB snapshot writes
+let updateInfo = null;   // { version, releaseUrl, downloadUrl } or null if up-to-date
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000; // check for updates every 6 hours
+const RELEASES_API = 'https://api.github.com/repos/mcglothi/runway/releases/latest';
 const AIKB_MIN_WRITE_INTERVAL_MS = 5 * 60 * 1000; // write AIKB snapshot at most once per 5 min
 const POPUP_WIDTH = 360;
 const POPUP_ROW_HEIGHT = 30;  // px per window row
 const POPUP_CHROME = 88;      // header + footer fixed height
-const POPUP_HINT_HEIGHT = 56; // connect-hint banner, approximate
+const POPUP_HINT_HEIGHT   = 56; // connect-hint banner, approximate
+const POPUP_UPDATE_HEIGHT = 36; // update-available banner, approximate
 const LOCAL_SERVER_PORT = 47821;
 const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 const CUSTOM_PROTOCOL = 'runway://';
@@ -536,8 +540,9 @@ function resizePopup() {
     if (snap.short?.utilization == null && !snap.short?.text) anyNoData = true;
   }
   rows = Math.max(1, rows);
-  const hintExtra = anyNoData ? POPUP_HINT_HEIGHT : 0;
-  popupWin.setSize(POPUP_WIDTH, POPUP_CHROME + rows * POPUP_ROW_HEIGHT + hintExtra);
+  const hintExtra   = anyNoData ? POPUP_HINT_HEIGHT : 0;
+  const updateExtra = updateInfo ? POPUP_UPDATE_HEIGHT : 0;
+  popupWin.setSize(POPUP_WIDTH, POPUP_CHROME + rows * POPUP_ROW_HEIGHT + hintExtra + updateExtra);
 }
 
 // ── Tray title (verbose mode) ─────────────────────────────────────────────────
@@ -808,6 +813,69 @@ function ensureGeminiTelemetryWatcher(filePath) {
   }
 }
 
+// ── Update checker ────────────────────────────────────────────────────────────
+/**
+ * Compares two semver strings. Returns true if `remote` is strictly newer than `local`.
+ * Handles "v"-prefixed strings (e.g. "v0.1.2").
+ */
+function isNewerVersion(local, remote) {
+  const parse = (v) => (v || '').replace(/^v/, '').split('.').map(Number);
+  const [la, lb, lc] = parse(local);
+  const [ra, rb, rc] = parse(remote);
+  if (ra !== la) return ra > la;
+  if (rb !== lb) return rb > lb;
+  return rc > lc;
+}
+
+async function checkForUpdates() {
+  try {
+    const res = await fetch(RELEASES_API, {
+      headers: { 'User-Agent': 'Runway-App', Accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const remoteVersion = (data.tag_name || '').replace(/^v/, '');
+    const localVersion = app.getVersion();
+
+    if (!isNewerVersion(localVersion, remoteVersion)) {
+      updateInfo = null;
+      pushToPopup();
+      return;
+    }
+
+    // Find the right platform asset: prefer arm64 DMG on mac, x64 DMG on intel, zip fallback
+    const assets = data.assets || [];
+    const platform = process.platform;
+    const arch = process.arch;
+    let downloadUrl = data.html_url; // fallback to releases page
+
+    if (platform === 'darwin') {
+      const archSuffix = arch === 'arm64' ? 'arm64' : 'x64';
+      const dmg = assets.find(a => a.name.endsWith(`-${archSuffix}.dmg`));
+      if (dmg) downloadUrl = dmg.browser_download_url;
+    } else if (platform === 'win32') {
+      const exe = assets.find(a => a.name.endsWith('.exe'));
+      if (exe) downloadUrl = exe.browser_download_url;
+    } else {
+      const appimage = assets.find(a => a.name.endsWith('.AppImage'));
+      if (appimage) downloadUrl = appimage.browser_download_url;
+    }
+
+    updateInfo = { version: remoteVersion, releaseUrl: data.html_url, downloadUrl };
+    console.log(`[runway:updater] Update available: ${localVersion} → ${remoteVersion}`);
+    pushToPopup();
+  } catch (e) {
+    console.warn('[runway:updater] Update check failed:', e.message);
+  }
+}
+
+function scheduleUpdateChecks() {
+  checkForUpdates(); // check immediately on startup
+  setInterval(checkForUpdates, UPDATE_CHECK_INTERVAL_MS);
+}
+
 // ── Poll scheduling ───────────────────────────────────────────────────────────
 function schedulePoll() {
   if (pollTimer) clearInterval(pollTimer);
@@ -916,6 +984,7 @@ function positionPopupNearTray() {
 function pushToPopup() {
   if (!popupWin || !popupWin.isVisible() || popupWin.isDestroyed()) return;
   popupWin.webContents.send('snapshots', snapshotsWithCosts());
+  popupWin.webContents.send('update-info', updateInfo);
 }
 
 /**
@@ -1016,6 +1085,7 @@ function createTray() {
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
 ipcMain.handle('get-snapshots', () => snapshotsWithCosts());
+ipcMain.handle('get-update-info', () => updateInfo);
 ipcMain.handle('get-tier-options', (_e, agent) => {
   const { pricing } = require('@runway/core');
   return pricing.tierOptions(agent);
@@ -1235,6 +1305,7 @@ app.whenReady().then(() => {
   // Initial poll then schedule
   pollAll();
   schedulePoll();
+  scheduleUpdateChecks();
 });
 
 app.on('activate', () => {
