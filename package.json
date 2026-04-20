@@ -1,6 +1,6 @@
 {
   "name": "runway",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "Quota and context tracking for AI agents — system tray widget and browser extension",
   "private": true,
   "workspaces": [
@@ -16,7 +16,11 @@
     "build:win": "npm -w apps/electron run build:win",
     "build:extension": "npm -w apps/extension run build",
     "build:core": "npm -w packages/core run build",
-    "dist:homebrew-cask": "bash scripts/generate-homebrew-cask.sh"
+    "dist:homebrew-cask": "bash scripts/generate-homebrew-cask.sh",
+    "release": "bash scripts/release.sh patch",
+    "release:minor": "bash scripts/release.sh minor",
+    "release:major": "bash scripts/release.sh major",
+    "release:dry": "DRY=true bash scripts/release.sh patch"
   },
   "license": "MIT"
 }
