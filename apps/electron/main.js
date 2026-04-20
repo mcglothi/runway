@@ -35,8 +35,10 @@ let snapshots = {};     // latest QuotaSnapshot per agent
 let pollTimer = null;
 let isPolling = false;  // Guard against overlapping polls
 let claudeOrgId = null; // cached to avoid re-resolving every poll
+let lastAikbWriteMs = 0; // rate-limit AIKB snapshot writes
 
 const DEFAULT_POLL_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+const AIKB_MIN_WRITE_INTERVAL_MS = 5 * 60 * 1000; // write AIKB snapshot at most once per 5 min
 const POPUP_WIDTH = 360;
 const POPUP_ROW_HEIGHT = 30;  // px per window row
 const POPUP_CHROME = 88;      // header + footer fixed height
@@ -819,6 +821,10 @@ function schedulePoll() {
 }
 
 function maybeWriteToAikb() {
+  const now = Date.now();
+  if (now - lastAikbWriteMs < AIKB_MIN_WRITE_INTERVAL_MS) return;
+  lastAikbWriteMs = now;
+
   const config = loadConfig();
   let eventsDir = config.aikbEventsDir;
 
