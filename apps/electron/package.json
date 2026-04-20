@@ -1,6 +1,6 @@
 {
   "name": "@runway/electron",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Runway system tray widget",
   "author": {
     "name": "Tim McGlothlin",
