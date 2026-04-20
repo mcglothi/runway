@@ -242,6 +242,10 @@
           then use the Runway browser extension to sync your session.
         </div>
       </div>
+      <div class="field">
+        <label for="claudePlan">Subscription Plan <span style="color:#3a3a3c;font-weight:400">(for API cost estimate)</span></label>
+        <select id="claudePlan"></select>
+      </div>
     </div>
   </div>
 </section>
@@ -284,6 +288,10 @@
           Auth is handled automatically — <a id="open-chatgpt">sign in at chatgpt.com</a> once
           and your Codex quota (5hr + 7-day windows) will be tracked automatically.
         </div>
+      </div>
+      <div class="field">
+        <label for="codexPlan">Subscription Plan <span style="color:#3a3a3c;font-weight:400">(for API cost estimate)</span></label>
+        <select id="codexPlan"></select>
       </div>
     </div>
   </div>
@@ -632,6 +640,17 @@
     const interval = config.refreshInterval ?? 300000;
     const intervalRadio = document.querySelector(`input[name="refreshInterval"][value="${interval}"]`);
     if (intervalRadio) intervalRadio.checked = true;
+
+    // Plan tier selects (populate from pricing module via IPC)
+    for (const agent of ['claude', 'codex']) {
+      const select = document.getElementById(`${agent}Plan`);
+      if (!select) continue;
+      const options = await window.runway.getTierOptions(agent);
+      const savedTier = config[`${agent}Plan`] || options[0]?.key || '';
+      select.innerHTML = options.map(o =>
+        `<option value="${o.key}"${o.key === savedTier ? ' selected' : ''}>${o.label}</option>`
+      ).join('');
+    }
   });
 
   // ── Maintenance buttons ────────────────────────────────────────────────────
@@ -697,6 +716,12 @@
     data.refreshInterval = refreshRadio ? Number(refreshRadio.value) : 300000;
     data.openAtLogin = document.getElementById('openAtLogin')?.checked === true;
     data.pinned = document.getElementById('pinned')?.checked === true;
+
+    // Plan tier selects
+    for (const agent of ['claude', 'codex']) {
+      const select = document.getElementById(`${agent}Plan`);
+      if (select?.value) data[`${agent}Plan`] = select.value;
+    }
 
     try {
       await window.runway.saveConfig(data);

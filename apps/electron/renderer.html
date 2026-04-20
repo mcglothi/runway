@@ -230,6 +230,15 @@
     .runway-col.crit   { color: #ff453a; }
     .runway-col.signin { color: #3a3a3c; }
 
+    .cost-est {
+      font-size: 10px;
+      color: #3a3a3c;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .cost-est.has-cost { color: #48484a; }
+
     .runway-link {
       color: inherit;
       text-decoration: underline;
@@ -532,12 +541,17 @@
       ? ` title="Resets at ${new Date(resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}"`
       : '';
 
+    const costEst = window?.cost_est;
+    const costHtml = costEst
+      ? `<span class="cost-est has-cost" title="Estimated API-equivalent cost">${costEst.label}</span>`
+      : '';
+
     return `<div class="row${isSub ? ' row-sub' : ''}">
       ${iconHtml}
       ${labelHtml}
       <div class="bar-track"><div class="bar-fill ${fillClass}" style="width:${barW}%"></div></div>
       <span class="pct ${pctClass}">${pctDisplay}</span>
-      <span class="runway-col ${rwClass}"${resetTitle}>${rwInner}</span>
+      <span class="runway-col ${rwClass}"${resetTitle}>${rwInner}${costHtml ? `<br>${costHtml}` : ''}</span>
     </div>`;
   }
 

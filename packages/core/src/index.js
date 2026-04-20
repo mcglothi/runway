@@ -5,5 +5,6 @@ const gemini = require('./providers/gemini');
 const geminiTelemetry = require('./providers/gemini-telemetry');
 const { makeSnapshot } = require('./schema');
 const { writeSnapshots } = require('./aikb-writer');
+const pricing = require('./pricing');
 
-module.exports = { claude, copilot, codex, gemini, geminiTelemetry, makeSnapshot, writeSnapshots };
+module.exports = { claude, copilot, codex, gemini, geminiTelemetry, makeSnapshot, writeSnapshots, pricing };
