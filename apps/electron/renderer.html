@@ -7,11 +7,14 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* --s is the unified scale factor, driven by window size via JS */
+    :root { --s: 1; }
+
     body {
       background: #111113;
       color: #e5e5ea;
       font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
-      font-size: 13px;
+      font-size: calc(13px * var(--s));
       user-select: none;
       overflow: hidden;
       border-radius: 12px;
@@ -22,7 +25,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 10px 14px 9px;
+      padding: calc(10px * var(--s)) calc(14px * var(--s)) calc(9px * var(--s));
       border-bottom: 1px solid rgba(255,255,255,0.06);
       background: linear-gradient(180deg, #1a1a1d 0%, #111113 100%);
     }
@@ -30,19 +33,19 @@
     #header-left {
       display: flex;
       align-items: center;
-      gap: 7px;
+      gap: calc(7px * var(--s));
       font-weight: 700;
-      font-size: 13px;
+      font-size: calc(13px * var(--s));
       color: #fff;
       letter-spacing: -0.2px;
     }
 
     .runway-mark {
-      width: 22px;
-      height: 22px;
+      width: calc(22px * var(--s));
+      height: calc(22px * var(--s));
       background: #0F172A;
       border: 1px solid rgba(255,255,255,0.05);
-      border-radius: 6px;
+      border-radius: calc(6px * var(--s));
       display: flex;
       align-items: center;
       justify-content: center;
@@ -57,8 +60,8 @@
       background: linear-gradient(135deg, rgba(0,194,255,0.15) 0%, rgba(110,64,201,0.15) 100%);
     }
     .runway-mark-inner {
-      width: 12px;
-      height: 12px;
+      width: calc(12px * var(--s));
+      height: calc(12px * var(--s));
       position: relative;
       z-index: 1;
     }
@@ -66,7 +69,7 @@
     #header-right {
       -webkit-app-region: no-drag;
       display: flex;
-      gap: 2px;
+      gap: calc(2px * var(--s));
     }
 
     .icon-btn {
@@ -74,9 +77,9 @@
       border: none;
       color: #48484a;
       cursor: pointer;
-      font-size: 14px;
-      padding: 3px 6px;
-      border-radius: 5px;
+      font-size: calc(14px * var(--s));
+      padding: calc(3px * var(--s)) calc(6px * var(--s));
+      border-radius: calc(5px * var(--s));
       line-height: 1;
       transition: color 0.15s, background 0.15s;
     }
@@ -87,15 +90,15 @@
     .icon-btn.spinning { animation: spin 0.7s linear infinite; color: #636366; }
 
     #gauges {
-      padding: 4px 0 2px;
+      padding: calc(4px * var(--s)) 0 calc(2px * var(--s));
     }
 
     #gauges.horizontal {
       display: flex;
       flex-direction: row;
       flex-wrap: wrap;
-      padding: 10px 14px;
-      gap: 12px;
+      padding: calc(10px * var(--s)) calc(14px * var(--s));
+      gap: calc(12px * var(--s));
     }
 
     #gauges.horizontal .provider-sep {
@@ -106,16 +109,16 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 10px 8px;
-      gap: 6px;
-      width: 105px;
+      padding: calc(10px * var(--s)) calc(8px * var(--s));
+      gap: calc(6px * var(--s));
+      width: calc(105px * var(--s));
       background: rgba(255,255,255,0.03);
       border: 1px solid rgba(255,255,255,0.04);
-      border-radius: 10px;
+      border-radius: calc(10px * var(--s));
     }
 
     #gauges.horizontal .provider-icon {
-      margin-bottom: 2px;
+      margin-bottom: calc(2px * var(--s));
     }
 
     #gauges.horizontal .agent-label {
@@ -125,7 +128,7 @@
 
     #gauges.horizontal .bar-track {
       width: 100%;
-      height: 4px;
+      height: calc(4px * var(--s));
     }
 
     #gauges.horizontal .pct {
@@ -136,33 +139,37 @@
     #gauges.horizontal .runway-col {
       text-align: center;
       width: 100%;
-      font-size: 10px;
+      font-size: calc(10px * var(--s));
     }
 
     .provider-sep {
       height: 1px;
       background: rgba(255,255,255,0.05);
-      margin: 2px 14px;
+      margin: calc(2px * var(--s)) calc(14px * var(--s));
     }
 
     /* icon | label | bar | pct | runway */
     .row {
       display: grid;
-      grid-template-columns: 22px 62px 1fr 44px 56px;
+      grid-template-columns: calc(22px * var(--s)) calc(62px * var(--s)) 1fr calc(44px * var(--s)) calc(56px * var(--s));
       align-items: center;
-      gap: 7px;
-      padding: 5px 14px;
+      gap: calc(7px * var(--s));
+      padding: calc(5px * var(--s)) calc(14px * var(--s));
       transition: background 0.12s;
     }
-    .row:hover { background: rgba(255,255,255,0.04); border-radius: 6px; }
+    .row:hover { background: rgba(255,255,255,0.04); border-radius: calc(6px * var(--s)); }
 
     .provider-icon {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 22px;
-      height: 22px;
+      width: calc(22px * var(--s));
+      height: calc(22px * var(--s));
       flex-shrink: 0;
+    }
+    .provider-icon svg {
+      width: calc(16px * var(--s));
+      height: calc(16px * var(--s));
     }
 
     .agent-label {
@@ -173,7 +180,7 @@
     }
 
     .agent-name {
-      font-size: 12px;
+      font-size: calc(12px * var(--s));
       font-weight: 600;
       color: #e5e5ea;
       white-space: nowrap;
@@ -181,22 +188,22 @@
       text-overflow: ellipsis;
     }
     .win-tag {
-      font-size: 10px;
+      font-size: calc(10px * var(--s));
       font-weight: 400;
       color: #48484a;
       letter-spacing: 0.2px;
     }
 
     .bar-track {
-      height: 5px;
+      height: calc(5px * var(--s));
       background: rgba(255,255,255,0.07);
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       overflow: hidden;
     }
 
     .bar-fill {
       height: 100%;
-      border-radius: 4px;
+      border-radius: calc(4px * var(--s));
       transition: width 0.45s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .bar-fill.low  { background: linear-gradient(to right, #28b84e, #30d158); }
@@ -205,7 +212,7 @@
     .bar-fill.none { background: rgba(255,255,255,0.05); width: 100% !important; }
 
     .pct {
-      font-size: 12px;
+      font-size: calc(12px * var(--s));
       font-weight: 600;
       text-align: right;
       color: #e5e5ea;
@@ -218,7 +225,7 @@
     .pct.error { color: #ff9f0a; font-weight: 400; }
 
     .runway-col {
-      font-size: 11px;
+      font-size: calc(11px * var(--s));
       color: #3a3a3c;
       text-align: right;
       font-variant-numeric: tabular-nums;
@@ -232,7 +239,7 @@
     .runway-col.signin { color: #3a3a3c; }
 
     .cost-est {
-      font-size: 10px;
+      font-size: calc(10px * var(--s));
       color: #3a3a3c;
       text-align: right;
       font-variant-numeric: tabular-nums;
@@ -252,29 +259,29 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 6px 14px 9px;
+      padding: calc(6px * var(--s)) calc(14px * var(--s)) calc(9px * var(--s));
       border-top: 1px solid rgba(255,255,255,0.05);
       margin-top: 1px;
     }
 
     #last-updated {
-      font-size: 10px;
+      font-size: calc(10px * var(--s));
       color: #3a3a3c;
     }
 
     #update-banner {
       display: none;
-      margin: 4px 14px 0;
-      padding: 7px 10px;
+      margin: calc(4px * var(--s)) calc(14px * var(--s)) 0;
+      padding: calc(7px * var(--s)) calc(10px * var(--s));
       background: rgba(48, 209, 88, 0.08);
       border: 1px solid rgba(48, 209, 88, 0.2);
-      border-radius: 8px;
-      font-size: 11px;
+      border-radius: calc(8px * var(--s));
+      font-size: calc(11px * var(--s));
       color: #30d158;
       display: none;
       align-items: center;
       justify-content: space-between;
-      gap: 8px;
+      gap: calc(8px * var(--s));
     }
     #update-banner a {
       color: #30d158;
@@ -286,9 +293,9 @@
     #update-banner a:hover { text-decoration-color: #30d158; }
 
     #not-configured {
-      padding: 24px 14px;
+      padding: calc(24px * var(--s)) calc(14px * var(--s));
       color: #48484a;
-      font-size: 12px;
+      font-size: calc(12px * var(--s));
       line-height: 1.6;
       text-align: center;
     }
@@ -301,12 +308,12 @@
 
     /* Onboarding / connect hints */
     #connect-hint {
-      margin: 4px 14px 6px;
-      padding: 9px 12px;
+      margin: calc(4px * var(--s)) calc(14px * var(--s)) calc(6px * var(--s));
+      padding: calc(9px * var(--s)) calc(12px * var(--s));
       background: rgba(10, 132, 255, 0.07);
       border: 1px solid rgba(10, 132, 255, 0.18);
-      border-radius: 8px;
-      font-size: 11px;
+      border-radius: calc(8px * var(--s));
+      font-size: calc(11px * var(--s));
       color: #636366;
       line-height: 1.5;
     }
@@ -320,15 +327,15 @@
       100% { background-position: 400px 0; }
     }
     .skel {
-      border-radius: 3px;
-      height: 5px;
+      border-radius: calc(3px * var(--s));
+      height: calc(5px * var(--s));
       background: linear-gradient(to right, #2c2c2e 8%, #3a3a3c 18%, #2c2c2e 33%);
       background-size: 800px 100%;
       animation: shimmer 1.4s linear infinite;
     }
     .skel-text {
-      height: 10px;
-      border-radius: 3px;
+      height: calc(10px * var(--s));
+      border-radius: calc(3px * var(--s));
       background: linear-gradient(to right, #2c2c2e 8%, #3a3a3c 18%, #2c2c2e 33%);
       background-size: 800px 100%;
       animation: shimmer 1.4s linear infinite;
@@ -376,6 +383,25 @@
 </div>
 
 <script>
+  // ── Responsive scale ──────────────────────────────────────────────────────────
+  // Geometric mean of width/height ratios against the baseline window size.
+  // Drives --s, which scales fonts, bar thickness, padding, and grid columns.
+  const SCALE_BASE_W = 360;
+  const SCALE_BASE_H = 300;
+  const SCALE_MIN    = 0.55;
+  const SCALE_MAX    = 2.2;
+
+  function applyScale() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const s = Math.sqrt((w / SCALE_BASE_W) * (h / SCALE_BASE_H));
+    const clamped = Math.max(SCALE_MIN, Math.min(SCALE_MAX, s));
+    document.documentElement.style.setProperty('--s', clamped.toFixed(4));
+  }
+
+  applyScale();
+  window.addEventListener('resize', applyScale);
+
   const PROVIDER_ORDER = ['claude', 'codex', 'gemini', 'copilot'];
 
   // Provider display metadata with inline SVG icons
