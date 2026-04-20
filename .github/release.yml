@@ -1,0 +1,21 @@
+changelog:
+  categories:
+    - title: "What's new"
+      labels:
+        - feat
+        - feature
+      collapse-after: 5
+    - title: Bug fixes
+      labels:
+        - fix
+        - bugfix
+    - title: Infrastructure & maintenance
+      labels:
+        - chore
+        - refactor
+        - ci
+        - deps
+      collapse-after: 3
+  exclude:
+    labels:
+      - skip-changelog

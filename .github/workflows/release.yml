@@ -6,10 +6,11 @@ on:
       - 'v*'
 
 permissions:
-  contents: write   # needed to create GitHub releases
+  contents: write
 
 jobs:
-  release:
+  build:
+    name: Build (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
@@ -35,24 +36,45 @@ jobs:
         run: npm ci
 
       - name: Build and publish (mac, unsigned)
-        if: matrix.platform == 'mac' && secrets.CSC_LINK == ''
+        if: matrix.platform == 'mac'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:mac -w apps/electron -- --publish always
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npm run build:mac -- --publish always
 
       - name: Build and publish (mac, signed)
         if: matrix.platform == 'mac' && secrets.CSC_LINK != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_ID:             ${{ secrets.APPLE_ID }}
+          APPLE_ID:                    ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID:        ${{ secrets.APPLE_TEAM_ID }}
-          CSC_LINK:             ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD:     ${{ secrets.CSC_KEY_PASSWORD }}
-        run: npm run build:mac -w apps/electron -- --publish always
+          APPLE_TEAM_ID:               ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK:                    ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD:            ${{ secrets.CSC_KEY_PASSWORD }}
+        run: npm run build:mac -- --publish always
 
       - name: Build and publish (${{ matrix.platform }})
         if: matrix.platform != 'mac'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npm run build:${{ matrix.platform }} -w apps/electron -- --publish always
+        run: npm run build:${{ matrix.platform }} -- --publish always
+
+  finalize:
+    name: Finalize release
+    needs: build
+    runs-on: ubuntu-latest
+    if: success()
+    steps:
+      - name: Generate release notes and publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/}"
+          gh release edit "$VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Runway ${VERSION#v}" \
+            --generate-notes \
+            --draft=false \
+            --latest
+          echo "✓ Published release $VERSION"
+          echo "  https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
