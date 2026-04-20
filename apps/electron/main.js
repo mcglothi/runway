@@ -915,7 +915,32 @@ function positionPopupNearTray() {
 
 function pushToPopup() {
   if (!popupWin || !popupWin.isVisible() || popupWin.isDestroyed()) return;
-  popupWin.webContents.send('snapshots', snapshots);
+  popupWin.webContents.send('snapshots', snapshotsWithCosts());
+}
+
+/**
+ * Attach API-equivalent cost estimates to snapshot windows before sending
+ * to the renderer. Only Claude and Codex are annotated; Gemini and Copilot
+ * are excluded (no reliable per-token mapping for consumer plans).
+ */
+function snapshotsWithCosts() {
+  const { pricing } = require('@runway/core');
+  const config = loadConfig();
+  const out = {};
+  for (const [agent, snap] of Object.entries(snapshots)) {
+    if (!snap || (agent !== 'claude' && agent !== 'codex')) {
+      out[agent] = snap;
+      continue;
+    }
+    const tierKey = config[`${agent}Plan`] || undefined;
+    const annotate = (win) => {
+      if (!win) return win;
+      const est = pricing.estimateCost(agent, win.utilization, tierKey);
+      return est ? { ...win, cost_est: est } : win;
+    };
+    out[agent] = { ...snap, short: annotate(snap.short), long: annotate(snap.long) };
+  }
+  return out;
 }
 
 // ── Settings window ───────────────────────────────────────────────────────────
@@ -990,7 +1015,11 @@ function createTray() {
 }
 
 // ── IPC handlers ──────────────────────────────────────────────────────────────
-ipcMain.handle('get-snapshots', () => snapshots);
+ipcMain.handle('get-snapshots', () => snapshotsWithCosts());
+ipcMain.handle('get-tier-options', (_e, agent) => {
+  const { pricing } = require('@runway/core');
+  return pricing.tierOptions(agent);
+});
 ipcMain.handle('get-config', () => loadConfig());
 ipcMain.handle('get-runtime-info', () => getRuntimeInfo());
 ipcMain.handle('save-config', (_e, data) => {
