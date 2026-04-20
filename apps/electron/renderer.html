@@ -262,6 +262,29 @@
       color: #3a3a3c;
     }
 
+    #update-banner {
+      display: none;
+      margin: 4px 14px 0;
+      padding: 7px 10px;
+      background: rgba(48, 209, 88, 0.08);
+      border: 1px solid rgba(48, 209, 88, 0.2);
+      border-radius: 8px;
+      font-size: 11px;
+      color: #30d158;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    #update-banner a {
+      color: #30d158;
+      text-decoration: underline;
+      text-decoration-color: rgba(48, 209, 88, 0.4);
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #update-banner a:hover { text-decoration-color: #30d158; }
+
     #not-configured {
       padding: 24px 14px;
       color: #48484a;
@@ -342,6 +365,11 @@
 </div>
 
 <div id="connect-hint" style="display:none"></div>
+
+<div id="update-banner">
+  <span id="update-text"></span>
+  <a id="update-link">Download</a>
+</div>
 
 <div id="footer">
   <span id="last-updated">—</span>
@@ -677,6 +705,24 @@
     lastPollMs = Date.now();
     updateFooter();
   });
+
+  // ── Update banner ─────────────────────────────────────────────────────────────
+  function applyUpdateInfo(info) {
+    const banner = document.getElementById('update-banner');
+    const text   = document.getElementById('update-text');
+    const link   = document.getElementById('update-link');
+    if (!banner) return;
+    if (info?.version) {
+      text.textContent = `v${info.version} available`;
+      link.onclick = () => window.runway.openExternal(info.downloadUrl || info.releaseUrl);
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  window.runway.getUpdateInfo().then(applyUpdateInfo);
+  window.runway.onUpdateInfo(applyUpdateInfo);
 
   window.runway.getSnapshots().then((data) => {
     // If snapshots already exist (app has polled before), treat as done
